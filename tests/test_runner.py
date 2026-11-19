@@ -284,3 +284,33 @@ def test_repeated_invalid_tool_call_stops_before_third_attempt(tmp_path):
     summary = json.loads((result.trace_path / "summary.json").read_text())
     assert summary["stop_reason"] == "invalid_tool"
     assert summary["tool_calls"] == 2
+
+
+def test_unreconciled_write_never_returns_to_model_for_another_key(tmp_path):
+    faults = FaultPlan(tuple(
+        FaultStep("ticket.create", attempt, FaultKind.LOSE_RESPONSE) for attempt in (1, 2, 3)
+    ))
+    result = _run(tmp_path, _assignment(), [
+        ("invoice.get", {"invoice_id": "INV-104"}),
+        ("invoice.assess", {"invoice_id": "INV-104"}),
+        ("ticket.preview_create", _preview),
+        ("ticket.create", _commit),
+    ], faults=faults)
+    events = [json.loads(line) for line in (result.trace_path / "trace.jsonl").read_text().splitlines()]
+    assert sum(event["event"] == "tool" and event["tool"] == "ticket.create" for event in events) == 3
+    assert json.loads((result.trace_path / "summary.json").read_text())["stop_reason"] == "commit_unknown"
+    assert [action.status for action in result.output.actions] == ["commit_unknown"]
+    assert len(json.loads((result.trace_path / "state_delta.json").read_text())) == 1
+
+
+def test_duplicate_confirmation_keys_cannot_commit_a_preview(tmp_path):
+    result = _run(tmp_path, _assignment(), [
+        ("invoice.get", {"invoice_id": "INV-104"}),
+        ("invoice.assess", {"invoice_id": "INV-104"}),
+        ("ticket.preview_create", _preview),
+        '{"customer_id":"acme","review_reason":null}',
+        '{"submit_preview":false,"submit_preview":true}',
+        '{"customer_id":"acme","review_reason":null}',
+    ])
+    assert result.output.status == "partial"
+    assert json.loads((result.trace_path / "state_delta.json").read_text()) == []

@@ -144,6 +144,7 @@ class _Run:
         self.attempted: set[str] = set()
         self.corrections = 0
         self.invalid_calls: set[str] = set()
+        self.write_stop: str | None = None
 
     @property
     def remaining(self) -> float:
@@ -209,11 +210,18 @@ class _Run:
         if response.ok:
             if self.remaining > 0 and self.tool_calls < self.limits.tool_calls:
                 tool, argument = _WRITES[name]
-                self.call_tool(tool, {argument: response.data.result_id})
-        elif args and isinstance(args.get("preview_token"), str):
-            invoice = self.previews.get(args["preview_token"])
-            if invoice is not None:
-                self.ledger.record_failure(invoice, name, uncertain=uncertain, reason=response.error.code)
+                readback, _ = self.call_tool(tool, {argument: response.data.result_id})
+                if not readback.ok:
+                    self.write_stop = "verification_incomplete"
+            else:
+                self.write_stop = "verification_incomplete"
+        else:
+            if args and isinstance(args.get("preview_token"), str):
+                invoice = self.previews.get(args["preview_token"])
+                if invoice is not None:
+                    self.ledger.record_failure(invoice, name, uncertain=uncertain, reason=response.error.code)
+            if uncertain or response.error.retryable:
+                self.write_stop = "commit_unknown" if uncertain else "write_retry_limit"
         return response
 
     def feedback(self, transcript: list[dict], code: str, message: str, **fields: str) -> bool:
@@ -271,6 +279,8 @@ class _Run:
                     tool, recommended = self.offers[token]
                     self.trace.event("model_action_choice", tool=tool, invoice_id=self.previews[token])
                     response = self.act(tool, recommended)
+                    if self.write_stop:
+                        return None, self.write_stop
                     transcript.append({"role": "user", "content": canonical({
                         "runtime_feedback": "The chosen tool returned this result. Finish the original task.",
                         "result": response.model_dump(mode="json"),
@@ -322,6 +332,8 @@ class _Run:
                 return None, "tool_budget"
             args = _arguments(call.arguments)
             response = self.act(call.name, args)
+            if self.write_stop:
+                return None, self.write_stop
             transcript.extend((
                 {
                     "type": "function_call", "call_id": call.id, "name": call.name,
@@ -348,7 +360,7 @@ def _arguments(raw: str) -> dict | None:
     if len(raw) > 8192:
         return None
     try:
-        value = json.loads(raw)
+        value = json.loads(raw, object_pairs_hook=_unique_json_object)
         if not isinstance(value, dict):
             return None
         return value if _bounded_json(value) else None
@@ -369,7 +381,14 @@ def _json_choice(raw: str):
     final = raw.strip()
     if final.startswith("```json\n") and final.endswith("\n```"):
         final = final[8:-4].strip()
-    return json.loads(final)
+    return json.loads(final, object_pairs_hook=_unique_json_object)
+
+
+def _unique_json_object(pairs: list[tuple[str, object]]) -> dict:
+    result = dict(pairs)
+    if len(result) != len(pairs):
+        raise ValueError("Duplicate JSON key")
+    return result
 
 
 def _submission_choice(raw: str) -> bool | None:
