@@ -65,6 +65,16 @@ def turn(model=None, **overrides):
     })
 
 
+def test_response_rejects_duplicate_keys_in_native_tool_arguments(http):
+    _, client = http
+    client.getresponse.return_value = Response(
+        b'{"done":true,"message":{"role":"assistant","tool_calls":'
+        b'[{"function":{"name":"customer_search","arguments":{"query":"Acme","query":"Other"}}}]}}'
+    )
+    with pytest.raises(ModelError, match="Invalid Ollama JSON response"):
+        turn()
+
+
 def test_ollama_turn_round_trip(http):
     factory, client = http
     chat(client, calls=[

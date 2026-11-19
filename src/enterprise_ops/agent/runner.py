@@ -11,7 +11,7 @@ from pydantic import TypeAdapter, ValidationError
 
 from enterprise_ops.agent.handles import ToolHandles
 from enterprise_ops.agent.harness import Harness, load_harness
-from enterprise_ops.agent.model import Model, ModelError
+from enterprise_ops.agent.model import Model, ModelError, strict_json
 from enterprise_ops.agent.output import Ledger, RunOutput
 from enterprise_ops.agent.trace import RunTrace
 from enterprise_ops.domain.entities import Capability, Principal
@@ -363,7 +363,7 @@ def _arguments(raw: str) -> dict | None:
     if len(raw) > 8192:
         return None
     try:
-        value = json.loads(raw, object_pairs_hook=_unique_json_object)
+        value = strict_json(raw)
         if not isinstance(value, dict):
             return None
         return value if _bounded_json(value) else None
@@ -384,14 +384,7 @@ def _json_choice(raw: str):
     final = raw.strip()
     if final.startswith("```json\n") and final.endswith("\n```"):
         final = final[8:-4].strip()
-    return json.loads(final, object_pairs_hook=_unique_json_object)
-
-
-def _unique_json_object(pairs: list[tuple[str, object]]) -> dict:
-    result = dict(pairs)
-    if len(result) != len(pairs):
-        raise ValueError("Duplicate JSON key")
-    return result
+    return strict_json(final)
 
 
 def _submission_choice(raw: str) -> bool | None:
