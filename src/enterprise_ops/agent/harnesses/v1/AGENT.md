@@ -30,6 +30,10 @@ fields instead. The runtime verifies committed actions with a read-back.
 Refresh affected reads after a stale state response. The runtime tracks
 verified facts and renders the final summary.
 
+The runtime may show short handles for evidence, cursors and preview values.
+Copy the handles as shown. When runtime feedback asks for submit_preview,
+answer with exactly that key and a JSON boolean, or call the indicated tool.
+
 When done, emit only one JSON object with exactly the keys customer_id and
 review_reason. Customer_id must be the observed or host-supplied account ID
 or null. Review_reason is null, AMBIGUOUS_CUSTOMER, or MISSING_INFORMATION.

@@ -4,13 +4,14 @@ import json
 from contextlib import closing
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from time import monotonic
+from time import monotonic, sleep
 from typing import Literal
 
 from pydantic import TypeAdapter, ValidationError
 
+from enterprise_ops.agent.handles import ToolHandles
 from enterprise_ops.agent.harness import Harness, load_harness
-from enterprise_ops.agent.model import Model, ModelError
+from enterprise_ops.agent.model import Model, ModelError, strict_json
 from enterprise_ops.agent.output import Ledger, RunOutput
 from enterprise_ops.agent.trace import RunTrace
 from enterprise_ops.domain.entities import Capability, Principal
@@ -85,12 +86,18 @@ class RunLimits:
     total_tokens: int = 300_000
     output_tokens_per_turn: int = 768
     deadline_seconds: float = 600.0
+    tool_retries: int = 2
+    model_corrections: int = 3
 
     def __post_init__(self) -> None:
         if any(type(limit) is not int or limit < 1 for limit in (
             self.tool_calls, self.model_turns, self.total_tokens, self.output_tokens_per_turn,
         )) or not 0 < self.deadline_seconds <= 3600:
             raise ValueError("Run limits must be positive and the deadline must be at most one hour")
+        if any(type(limit) is not int or not 0 <= limit <= maximum for limit, maximum in (
+            (self.tool_retries, 2), (self.model_corrections, 3),
+        )):
+            raise ValueError("Recovery allows up to two tool retries and three model corrections")
 
 
 class FinalChoice(StrictModel):
@@ -136,6 +143,10 @@ class _Run:
         self.previews: dict[str, str] = {}
         self.offers: dict[str, tuple[str, dict]] = {}
         self.attempted: set[str] = set()
+        self.corrections = 0
+        self.invalid_calls: set[str] = set()
+        self.write_stop: str | None = None
+        self.handles = ToolHandles()
 
     @property
     def remaining(self) -> float:
@@ -148,7 +159,7 @@ class _Run:
 
     def dispatch(self, name: str, args: dict | None) -> ToolResponse:
         self.tool_calls += 1
-        response = self.gateway.invoke(name, args)
+        response = self.gateway.invoke(name, args, timeout=max(0.0, self.remaining))
         fields = self._fields.get(name, ())
         trace_name = name if name in self._fields else "unknown"
         self.trace.event(
@@ -161,8 +172,29 @@ class _Run:
             self.error(response.error.code, tool=trace_name, call_id=response.meta.call_id)
         return response
 
+    def call_tool(self, name: str, args: dict | None) -> tuple[ToolResponse, bool]:
+        uncertain = False
+        for attempt in range(self.limits.tool_retries + 1):
+            response = self.dispatch(name, args)
+            error = response.error
+            if response.ok or not error.retryable or error.code not in {"RATE_LIMITED", "TRANSIENT_FAILURE"}:
+                return response, uncertain
+            uncertain |= error.code == "TRANSIENT_FAILURE"
+            delay = (error.retry_after_ms or 0) / 1000
+            reserve = 2 if name in _WRITES else 1
+            if (
+                attempt == self.limits.tool_retries or self.remaining <= delay
+                or self.tool_calls + reserve > self.limits.tool_calls
+            ):
+                return response, uncertain
+            self.trace.event("retry", tool=name, after_call_id=response.meta.call_id, delay_ms=delay * 1000)
+            if delay:
+                sleep(delay)
+        raise AssertionError("Bounded tool retry must produce a response")
+
     def act(self, name: str, args: dict | None) -> ToolResponse:
-        response = self.dispatch(name, args)
+        args = self.handles.for_gateway(args)
+        response, uncertain = self.call_tool(name, args)
         if name == "ticket.preview_create" and response.ok and response.data.preview_token is not None:
             preview = response.data
             token = preview.preview_token
@@ -181,12 +213,27 @@ class _Run:
         if response.ok:
             if self.remaining > 0 and self.tool_calls < self.limits.tool_calls:
                 tool, argument = _WRITES[name]
-                self.dispatch(tool, {argument: response.data.result_id})
-        elif args and isinstance(args.get("preview_token"), str):
-            invoice = self.previews.get(args["preview_token"])
-            if invoice is not None:
-                self.ledger.record_failure(invoice, name, uncertain=response.error.retryable, reason=response.error.code)
+                readback, _ = self.call_tool(tool, {argument: response.data.result_id})
+                if not readback.ok:
+                    self.write_stop = "verification_incomplete"
+            else:
+                self.write_stop = "verification_incomplete"
+        else:
+            if args and isinstance(args.get("preview_token"), str):
+                invoice = self.previews.get(args["preview_token"])
+                if invoice is not None:
+                    self.ledger.record_failure(invoice, name, uncertain=uncertain, reason=response.error.code)
+            if uncertain or response.error.retryable:
+                self.write_stop = "commit_unknown" if uncertain else "write_retry_limit"
         return response
+
+    def feedback(self, transcript: list[dict], code: str, message: str, **fields: str) -> bool:
+        if self.corrections == self.limits.model_corrections or self.model_turns >= self.limits.model_turns:
+            return False
+        self.corrections += 1
+        transcript.append({"role": "user", "content": canonical({"runtime_feedback": message, **fields})})
+        self.trace.event("model_correction", code=code, **fields)
+        return True
 
     def execute(self) -> tuple[FinalChoice | None, str]:
         transcript = [{"role": "user", "content": canonical({
@@ -194,6 +241,7 @@ class _Run:
         })}]
         seen_calls: set[str] = set()
         offered_followup = False
+        offered_token: str | None = None
         for _ in range(self.limits.model_turns):
             if self.remaining <= 0:
                 return None, "deadline"
@@ -210,6 +258,9 @@ class _Run:
             except ModelError:
                 self.error("MODEL_ERROR")
                 return None, "provider_error"
+            if any(type(count) is not int or count < 0 for count in (turn.input_tokens, turn.output_tokens)):
+                self.error("INVALID_MODEL_USAGE")
+                return None, "invalid_turn"
             self.input_tokens += turn.input_tokens
             self.output_tokens += turn.output_tokens
             self.trace.event(
@@ -221,10 +272,32 @@ class _Run:
             if self.input_tokens + self.output_tokens > self.limits.total_tokens:
                 return None, "token_budget"
             if not turn.calls and turn.final is not None:
+                submission = _submission_choice(turn.final) if offered_token is not None else None
+                if submission is not None:
+                    token, offered_token = offered_token, None
+                    if not submission:
+                        return FinalChoice(customer_id=self.task.account, review_reason=None), "model_final"
+                    if self.tool_calls + 2 > self.limits.tool_calls:
+                        return None, "tool_budget"
+                    tool, recommended = self.offers[token]
+                    self.trace.event("model_action_choice", tool=tool, invoice_id=self.previews[token])
+                    response = self.act(tool, recommended)
+                    if self.write_stop:
+                        return None, self.write_stop
+                    transcript.append({"role": "user", "content": canonical({
+                        "runtime_feedback": "The chosen tool returned this result. Finish the original task.",
+                        "result": self.handles.for_model(response.model_dump(mode="json")),
+                    })})
+                    continue
                 try:
                     choice = _final_choice(turn.final)
                 except (ValidationError, ValueError, RecursionError):
                     self.error("INVALID_FINAL_CHOICE")
+                    if self.feedback(
+                        transcript, "INVALID_FINAL_CHOICE",
+                        'Return only the requested JSON object with customer_id and review_reason. A missing value is JSON null.',
+                    ):
+                        continue
                     return None, "invalid_final"
                 if (
                     choice.review_reason is None and not offered_followup
@@ -235,29 +308,35 @@ class _Run:
                         tool, recommended = self.offers[pending]
                         transcript.append({"role": "user", "content": canonical({
                             "runtime_feedback": (
-                                "The authorized action is still open. If you intend to submit it, "
-                                "call the indicated declared tool with these exact arguments now. "
-                                "Otherwise return only the final JSON with unquoted null when appropriate."
+                                "The authorized action is still open. Choose exactly one JSON object "
+                                'with a boolean. {"submit_preview":true} submits this already-authorized preview. '
+                                '{"submit_preview":false} leaves it open. You can also call the declared tool explicitly.'
                             ),
                             "pending_tool": tool,
                             "provider_tool_name": tool.replace(".", "_"),
-                            "arguments": recommended,
+                            "arguments": self.handles.for_model(recommended),
                         })})
                         self.trace.event("action_followup", tool=tool, invoice_id=self.previews[pending])
                         offered_followup = True
+                        offered_token = pending
                         continue
                 self.trace.event("model_final", choice=choice.model_dump())
                 return choice, "model_final"
             if len(turn.calls) != 1 or turn.final is not None or turn.calls[0].id in seen_calls:
                 self.error("INVALID_MODEL_TURN")
+                if self.feedback(transcript, "INVALID_MODEL_TURN", "Propose a single tool call or one final JSON object."):
+                    continue
                 return None, "invalid_turn"
             call = turn.calls[0]
+            offered_token = None
             seen_calls.add(call.id)
             reserve = 2 if call.name in _WRITES else 1
             if self.tool_calls + reserve > self.limits.tool_calls:
                 return None, "tool_budget"
             args = _arguments(call.arguments)
             response = self.act(call.name, args)
+            if self.write_stop:
+                return None, self.write_stop
             transcript.extend((
                 {
                     "type": "function_call", "call_id": call.id, "name": call.name,
@@ -265,9 +344,18 @@ class _Run:
                 },
                 {
                     "type": "function_call_output", "call_id": call.id, "name": call.name,
-                    "output": response.model_dump_json(),
+                    "output": canonical(self.handles.for_model(response.model_dump(mode="json"))),
                 },
             ))
+            if not response.ok and response.error.code in {"VALIDATION_ERROR", "SCHEMA_MISMATCH"}:
+                invalid = digest(json.dumps([call.name, args], sort_keys=True))
+                if invalid in self.invalid_calls or not self.feedback(
+                    transcript, response.error.code,
+                    "Use a declared tool name and its exact argument schema. Correct the rejected call once.",
+                    tool=call.name if call.name in self._fields else "unknown",
+                ):
+                    return None, "invalid_tool"
+                self.invalid_calls.add(invalid)
         return None, "model_budget"
 
 
@@ -275,7 +363,7 @@ def _arguments(raw: str) -> dict | None:
     if len(raw) > 8192:
         return None
     try:
-        value = json.loads(raw)
+        value = strict_json(raw)
         if not isinstance(value, dict):
             return None
         return value if _bounded_json(value) else None
@@ -286,13 +374,28 @@ def _arguments(raw: str) -> dict | None:
 def _final_choice(raw: str) -> FinalChoice:
     if len(raw) > 4096:
         raise ValueError("Final choice exceeds limit")
-    final = raw.strip()
-    if final.startswith("```json\n") and final.endswith("\n```"):
-        final = final[8:-4].strip()
-    choice = json.loads(final)
+    choice = _json_choice(raw)
     if isinstance(choice, dict) and choice.get("review_reason") == "null":
         choice["review_reason"] = None
     return FinalChoice.model_validate(choice)
+
+
+def _json_choice(raw: str):
+    final = raw.strip()
+    if final.startswith("```json\n") and final.endswith("\n```"):
+        final = final[8:-4].strip()
+    return strict_json(final)
+
+
+def _submission_choice(raw: str) -> bool | None:
+    if len(raw) <= 4096:
+        try:
+            value = _json_choice(raw)
+            if isinstance(value, dict) and set(value) == {"submit_preview"} and type(value["submit_preview"]) is bool:
+                return value["submit_preview"]
+        except (ValueError, RecursionError):
+            pass
+    return None
 
 
 def _bounded_json(value: object, depth: int = 0) -> bool:

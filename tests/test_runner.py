@@ -4,10 +4,11 @@ from dataclasses import replace
 
 import pytest
 
+from enterprise_ops.agent.handles import ToolHandles
 from enterprise_ops.agent.model import ModelError, ModelTurn, ToolCall
 from enterprise_ops.agent.runner import RunLimits, RunTask, run_task
 from enterprise_ops.domain.entities import Capability, Principal
-from enterprise_ops.sandbox import seed_snapshot
+from enterprise_ops.sandbox import FaultKind, FaultPlan, FaultStep, seed_snapshot
 from enterprise_ops.storage.sqlite import connect
 from enterprise_ops.tools.session import WriteScope
 
@@ -207,3 +208,124 @@ def test_ready_preview_gets_one_followup_and_still_requires_a_model_tool_call(tm
     assert [action.status for action in result.output.actions] == ["completed"]
     events = [json.loads(line)["event"] for line in (result.trace_path / "trace.jsonl").read_text().splitlines()]
     assert events.count("action_followup") == 1
+
+
+def test_confirmed_preview_uses_the_exact_gateway_command(tmp_path):
+    result = _run(tmp_path, _assignment(), [
+        ("invoice.get", {"invoice_id": "INV-104"}),
+        ("invoice.assess", {"invoice_id": "INV-104"}),
+        ("ticket.preview_create", _preview),
+        '{"customer_id":"acme","review_reason":null}',
+        '{"submit_preview":true}',
+        '{"customer_id":"acme","review_reason":null}',
+    ])
+    assert result.output.status == "resolved"
+    assert [action.status for action in result.output.actions] == ["completed"]
+
+
+def test_unsolicited_submit_signal_and_decline_do_not_mutate(tmp_path):
+    unsolicited = _run(tmp_path / "unsolicited", _assignment(), [
+        '{"submit_preview":true}',
+        '{"customer_id":"acme","review_reason":"MISSING_INFORMATION"}',
+    ])
+    assert json.loads((unsolicited.trace_path / "state_delta.json").read_text()) == []
+    declined = _run(tmp_path / "declined", _assignment(), [
+        ("invoice.get", {"invoice_id": "INV-104"}),
+        ("invoice.assess", {"invoice_id": "INV-104"}),
+        ("ticket.preview_create", _preview),
+        '{"customer_id":"acme","review_reason":null}',
+        '{"submit_preview":false}',
+    ])
+    assert declined.output.status == "partial"
+    assert json.loads((declined.trace_path / "state_delta.json").read_text()) == []
+
+
+def test_runtime_retries_exact_lost_command_and_read_back(tmp_path):
+    faults = FaultPlan((
+        FaultStep("invoice.get", 1, FaultKind.RATE_LIMITED),
+        FaultStep("ticket.create", 1, FaultKind.LOSE_RESPONSE),
+        FaultStep("ticket.get", 1, FaultKind.TRANSIENT_FAILURE),
+    ))
+    result = _run(tmp_path, _assignment(), [
+        ("invoice.get", {"invoice_id": "INV-104"}),
+        ("invoice.assess", {"invoice_id": "INV-104"}),
+        ("ticket.preview_create", _preview),
+        ("ticket.create", _commit),
+        '{"customer_id":"acme","review_reason":null}',
+    ], faults=faults)
+    action, = result.output.actions
+    assert action.status == "completed" and action.confirmed_by_readback
+    events = [json.loads(line) for line in (result.trace_path / "trace.jsonl").read_text().splitlines()]
+    assert [event["tool"] for event in events if event["event"] == "retry"] == [
+        "invoice.get", "ticket.create", "ticket.get",
+    ]
+    assert len(json.loads((result.trace_path / "state_delta.json").read_text())) == 1
+
+
+def test_budget_stops_exact_retry_and_surfaces_unknown_write(tmp_path):
+    faults = FaultPlan((FaultStep("ticket.create", 1, FaultKind.LOSE_RESPONSE),))
+    result = _run(tmp_path, _assignment(), [
+        ("invoice.get", {"invoice_id": "INV-104"}),
+        ("invoice.assess", {"invoice_id": "INV-104"}),
+        ("ticket.preview_create", _preview),
+        ("ticket.create", _commit),
+        '{"customer_id":"acme","review_reason":null}',
+    ], faults=faults, limits=RunLimits(tool_calls=5))
+    assert result.output.status == "partial"
+    assert any(action.status == "commit_unknown" for action in result.output.actions)
+    assert len(json.loads((result.trace_path / "state_delta.json").read_text())) == 1
+
+
+def test_repeated_invalid_tool_call_stops_before_third_attempt(tmp_path):
+    task = RunTask("wrong-schema", "Find the invoices.", PRINCIPAL, "list_invoices", customer_id="acme")
+    result = _run(tmp_path, task, [
+        ("invoice.search", {"customer_id": "acme", "limit": 999}),
+        ("invoice.search", {"customer_id": "acme", "limit": 999}),
+    ])
+    summary = json.loads((result.trace_path / "summary.json").read_text())
+    assert summary["stop_reason"] == "invalid_tool"
+    assert summary["tool_calls"] == 2
+
+
+def test_unreconciled_write_never_returns_to_model_for_another_key(tmp_path):
+    faults = FaultPlan(tuple(
+        FaultStep("ticket.create", attempt, FaultKind.LOSE_RESPONSE) for attempt in (1, 2, 3)
+    ))
+    result = _run(tmp_path, _assignment(), [
+        ("invoice.get", {"invoice_id": "INV-104"}),
+        ("invoice.assess", {"invoice_id": "INV-104"}),
+        ("ticket.preview_create", _preview),
+        ("ticket.create", _commit),
+    ], faults=faults)
+    events = [json.loads(line) for line in (result.trace_path / "trace.jsonl").read_text().splitlines()]
+    assert sum(event["event"] == "tool" and event["tool"] == "ticket.create" for event in events) == 3
+    assert json.loads((result.trace_path / "summary.json").read_text())["stop_reason"] == "commit_unknown"
+    assert [action.status for action in result.output.actions] == ["commit_unknown"]
+    assert len(json.loads((result.trace_path / "state_delta.json").read_text())) == 1
+
+
+def test_duplicate_confirmation_keys_cannot_commit_a_preview(tmp_path):
+    result = _run(tmp_path, _assignment(), [
+        ("invoice.get", {"invoice_id": "INV-104"}),
+        ("invoice.assess", {"invoice_id": "INV-104"}),
+        ("ticket.preview_create", _preview),
+        '{"customer_id":"acme","review_reason":null}',
+        '{"submit_preview":false,"submit_preview":true}',
+        '{"customer_id":"acme","review_reason":null}',
+    ])
+    assert result.output.status == "partial"
+    assert json.loads((result.trace_path / "state_delta.json").read_text()) == []
+
+
+def test_model_handles_round_trip_only_within_their_kind_and_run():
+    handles = ToolHandles()
+    observed = handles.for_model({
+        "meta": {"evidence_ids": ["ev_record"]},
+        "data": {"next_cursor": "opaque-cursor", "preview_token": "opaque-preview"},
+    })
+    evidence = observed["meta"]["evidence_ids"][0]
+    cursor, preview = observed["data"]["next_cursor"], observed["data"]["preview_token"]
+    assert handles.for_gateway({
+        "evidence_ids": [evidence, preview], "page_cursor": cursor, "preview_token": preview,
+    }) == {"evidence_ids": ["ev_record", preview], "page_cursor": "opaque-cursor", "preview_token": "opaque-preview"}
+    assert ToolHandles().for_gateway({"preview_token": preview}) == {"preview_token": preview}

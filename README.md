@@ -67,3 +67,5 @@ print(result.trace_path)
 ```
 
 Run artifacts contain the declared profile, snapshot and harness digests, observed tool results, validated output, and audit-backed state changes. The runtime records an action as completed after matching its durable receipt to read-back.
+
+The runner uses short model-facing references for cursors, evidence and previews. It resolves them back to the gateway's issued values in the same run. Tool attempts and retries count toward the run limit. If the runner cannot reconcile a write or verify its read-back, it stops and reports the open outcome.

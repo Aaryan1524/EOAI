@@ -49,6 +49,17 @@ class ModelError(RuntimeError):
     """Model boundary failure with a safe, static message."""
 
 
+def strict_json(value: str | bytes):
+    return json.loads(value, object_pairs_hook=_unique_json_object)
+
+
+def _unique_json_object(pairs: list[tuple[str, object]]) -> dict:
+    result = dict(pairs)
+    if len(result) != len(pairs):
+        raise ValueError("Duplicate JSON key")
+    return result
+
+
 _MAX_BODY_BYTES = 2 * 1024 * 1024
 
 
@@ -300,7 +311,7 @@ class OllamaModel:
         if len(raw) > _MAX_BODY_BYTES:
             raise ModelError("Ollama response is too large")
         try:
-            response_data = json.loads(raw)
+            response_data = strict_json(raw)
         except (ValueError, RecursionError):
             raise ModelError("Invalid Ollama JSON response") from None
         if not isinstance(response_data, dict):

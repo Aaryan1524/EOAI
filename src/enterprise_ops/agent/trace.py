@@ -17,7 +17,7 @@ _PRIVATE_KEYS = {
 }
 _CREDENTIAL = re.compile(
     r"(?i)(?:\b(?:Bearer\s+[A-Za-z0-9._~+/-]{8,}|sk-[A-Za-z0-9_-]{8,})|"
-    r"(?:preview|command)_[0-9a-f]{32}|[A-Za-z0-9_+/=-]{96,})"
+    r"(?:preview|command)_(?:[0-9a-f]{32}|[0-9]+)|[A-Za-z0-9_+/=-]{96,})"
 )
 
 
