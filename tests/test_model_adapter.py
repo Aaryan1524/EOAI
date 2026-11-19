@@ -75,6 +75,45 @@ def test_response_rejects_duplicate_keys_in_native_tool_arguments(http):
         turn()
 
 
+def test_pinned_model_rejects_changed_digest_before_inference(http):
+    _, client = http
+    model = OllamaModel("qwen3:4b-instruct")
+    model.pin_model_digest("a" * 64)
+    client.getresponse.return_value = Response(json.dumps({
+        "models": [{"name": model.model_id, "digest": "b" * 64}],
+    }).encode())
+    with pytest.raises(ModelError, match="digest changed"):
+        turn(model)
+    assert [request.args[:2] for request in client.request.call_args_list] == [("GET", "/api/tags")]
+
+
+def test_prefixed_inventory_digest_matches_its_bare_pin(http):
+    _, client = http
+    model = OllamaModel("qwen3:4b-instruct")
+    expected = "a" * 64
+    assert model.pin_model_digest("sha256:" + expected) == expected
+    inventory = Response(json.dumps({"models": [{"name": model.model_id, "digest": "sha256:" + expected}]}).encode())
+    chat(client, content="{}")
+    client.getresponse.side_effect = [inventory, client.getresponse.return_value, inventory]
+    assert turn(model).final == "{}"
+    assert [request.args[:2] for request in client.request.call_args_list] == [
+        ("GET", "/api/tags"), ("POST", "/api/chat"), ("GET", "/api/tags"),
+    ]
+
+
+def test_retag_during_inference_cannot_return_a_model_action(http):
+    _, client = http
+    model = OllamaModel("qwen3:4b-instruct")
+    model.pin_model_digest("a" * 64)
+    inventories = [Response(json.dumps({
+        "models": [{"name": model.model_id, "digest": character * 64}],
+    }).encode()) for character in ("a", "b")]
+    chat(client, content='{"submit_preview":true}')
+    client.getresponse.side_effect = [inventories[0], client.getresponse.return_value, inventories[1]]
+    with pytest.raises(ModelError, match="digest changed"):
+        turn(model)
+
+
 def test_ollama_turn_round_trip(http):
     factory, client = http
     chat(client, calls=[
@@ -91,7 +130,9 @@ def test_ollama_turn_round_trip(http):
     ]
     assert len({call.id for call in first.calls}) == 2
     assert all(re.fullmatch(r"call_[0-9a-f]{32}", call.id) for call in first.calls)
-    factory.assert_called_once_with("127.0.0.1", 9412, timeout=3.0)
+    factory.assert_called_once()
+    assert factory.call_args.args == ("127.0.0.1", 9412)
+    assert 0 < factory.call_args.kwargs["timeout"] <= 3.0
     method, path, body, headers = client.request.call_args.args
     assert (method, path, headers["Content-Type"]) == ("POST", "/api/chat", "application/json")
     request = json.loads(body)

@@ -33,6 +33,21 @@ class _UseSchemaVersion(Enum):
     CURRENT = auto()
 
 
+def declarations_for_profile(profile_name: str) -> list[dict[str, Any]]:
+    profile = TOOL_PROFILES.get(profile_name)
+    if profile is None:
+        raise ValueError("Unsupported tool profile")
+    return [
+        {
+            "name": name,
+            "schema_version": profile.schema_version,
+            "arguments": profile.argument_overrides.get(name, definition.arguments).model_json_schema(),
+            "result": definition.result.model_json_schema(),
+        }
+        for name, definition in TOOLS.items()
+    ]
+
+
 class ToolGateway:
     def __init__(
         self,
@@ -53,15 +68,7 @@ class ToolGateway:
         self._faults = faults.fresh() if faults is not None else FaultPlan()
 
     def declarations(self) -> list[dict[str, Any]]:
-        return [
-            {
-                "name": name,
-                "schema_version": self._profile.schema_version,
-                "arguments": self._argument_model(name, definition).model_json_schema(),
-                "result": definition.result.model_json_schema(),
-            }
-            for name, definition in TOOLS.items()
-        ]
+        return declarations_for_profile(self._session.sandbox.profile)
 
     def canonical_arguments(self, name: str, arguments: dict[str, Any]) -> dict[str, Any]:
         """Validate the active profile's arguments and dump the canonical v1 fields."""

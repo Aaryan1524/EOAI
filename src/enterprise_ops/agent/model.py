@@ -206,6 +206,17 @@ class OllamaModel:
         if type(context_window) is not int or context_window <= 0:
             raise ModelError("Invalid model context window")
         self._context_window = context_window
+        self._pinned_digest: str | None = None
+
+    @property
+    def settings(self) -> dict:
+        return {"context_window": self._context_window, "temperature": 0.0, "seed": 0}
+
+    def pin_model_digest(self, expected: str) -> str:
+        if not isinstance(expected, str) or not re.fullmatch(r"(?:sha256:)?[a-f0-9]{64}", expected):
+            raise ModelError("Invalid model digest")
+        self._pinned_digest = expected.removeprefix("sha256:")
+        return self._pinned_digest
 
     def turn(
         self,
@@ -218,6 +229,10 @@ class OllamaModel:
     ) -> ModelTurn:
         if type(max_output_tokens) is not int or max_output_tokens <= 0:
             raise ModelError("Invalid model output token limit")
+        deadline = monotonic() + timeout
+        if self._pinned_digest is not None:
+            if self.model_digest(timeout=timeout) != self._pinned_digest:
+                raise ModelError("Installed model digest changed")
         try:
             tools, logical_names = _provider_tools(declarations)
             messages = _provider_messages(instructions, transcript, logical_names)
@@ -238,7 +253,10 @@ class OllamaModel:
         except (AttributeError, KeyError, TypeError, ValueError, RecursionError):
             raise ModelError("Invalid model request") from None
 
-        response = self._request("POST", "/api/chat", timeout, body)
+        response = self._request("POST", "/api/chat", deadline - monotonic(), body)
+        if self._pinned_digest is not None:
+            if self.model_digest(timeout=deadline - monotonic()) != self._pinned_digest:
+                raise ModelError("Installed model digest changed")
         try:
             return _model_turn(response, logical_names)
         except (AttributeError, KeyError, TypeError, ValueError, RecursionError):
@@ -259,7 +277,7 @@ class OllamaModel:
                 if any(model.get(key) in model_ids for key in ("model", "name")):
                     digest = model["digest"]
                     if re.fullmatch(r"(?:sha256:)?[0-9a-f]{64}", digest):
-                        return digest
+                        return digest.removeprefix("sha256:")
         except (AttributeError, KeyError, TypeError):
             raise ModelError("Invalid Ollama model inventory") from None
         raise ModelError("Ollama model digest unavailable")

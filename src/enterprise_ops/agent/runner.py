@@ -3,6 +3,7 @@
 import json
 from contextlib import closing
 from dataclasses import asdict, dataclass
+from hashlib import sha256
 from pathlib import Path
 from time import monotonic, sleep
 from typing import Literal
@@ -11,7 +12,7 @@ from pydantic import TypeAdapter, ValidationError
 
 from enterprise_ops.agent.handles import ToolHandles
 from enterprise_ops.agent.harness import Harness, load_harness
-from enterprise_ops.agent.model import Model, ModelError, strict_json
+from enterprise_ops.agent.model import Model, ModelError, OllamaModel, strict_json
 from enterprise_ops.agent.output import Ledger, RunOutput
 from enterprise_ops.agent.trace import RunTrace
 from enterprise_ops.domain.entities import Capability, Principal
@@ -43,6 +44,12 @@ class RunTask:
             raise ValueError("Task ID must be a valid bounded identifier") from error
         if not isinstance(self.request, str) or not self.request.strip() or len(self.request) > 4096:
             raise ValueError("Task requires an ID and a bounded request")
+        try:
+            self.request.encode("utf-8")
+            if self.customer_query is not None:
+                self.customer_query.encode("utf-8")
+        except (UnicodeError, AttributeError) as error:
+            raise ValueError("Task text must be valid UTF-8") from error
         if self.operation not in ("list_invoices", "review_invoices", "escalate"):
             raise ValueError("Unsupported task operation")
         if self.invoice_ids is not None:
@@ -409,6 +416,18 @@ def _bounded_json(value: object, depth: int = 0) -> bool:
     return not isinstance(value, float) or abs(value) < float("inf")
 
 
+def task_digest(task: RunTask) -> str:
+    return digest({
+        "task_id": task.id, "request": task.request, "context": task.public_context(),
+        "principal": asdict(task.principal),
+        "write_scope_digest": task.write_scope.digest if task.write_scope else None,
+    })
+
+
+def fault_plan_digest(faults: FaultPlan | None) -> str:
+    return digest([asdict(step) for step in faults.steps] if faults is not None else [])
+
+
 def run_task(
     snapshot: Snapshot,
     task: RunTask,
@@ -419,9 +438,16 @@ def run_task(
     limits: RunLimits | None = None,
     harness: Harness | None = None,
     faults: FaultPlan | None = None,
+    model_digest: str | None = None,
+    scenario: str | None = None,
 ) -> RunResult:
     limits = limits or RunLimits(tool_calls=12 if task.operation == "list_invoices" else 35)
     harness = harness or load_harness()
+    if sha256(harness.instructions.encode()).hexdigest() != harness.digest:
+        raise ValueError("Harness instructions do not match their digest")
+    if isinstance(model, OllamaModel):
+        model_digest = model_digest or model.model_digest(timeout=min(5.0, limits.deadline_seconds))
+        model_digest = model.pin_model_digest(model_digest)
     sandbox = snapshot.clone(runs_root / "sandboxes", run_id)
     with closing(connect(sandbox.path)) as db:
         authorize(db, task.principal, Capability.READ)
@@ -430,10 +456,14 @@ def run_task(
     trace = RunTrace(runs_root / "traces", sandbox)
     run = _Run(gateway, model, task, harness, limits, trace)
     trace.write("manifest", {
-        "run_id": run_id, "task_id": task.id, "sandbox_id": sandbox.id,
+        "manifest_version": 1, "run_id": run_id, "task_id": task.id, "sandbox_id": sandbox.id,
+        "scenario": scenario, "task_digest": task_digest(task),
+        "fault_plan_digest": fault_plan_digest(faults),
+        "write_scope_digest": task.write_scope.digest if task.write_scope else None,
         "snapshot_id": snapshot.id, "snapshot_digest": snapshot.digest, "profile": sandbox.profile,
         "tool_declarations_digest": digest(run.declarations), "as_of": trace.as_of,
-        "provider": model.provider, "model_id": model.model_id,
+        "provider": model.provider, "model_id": model.model_id, "model_digest": model_digest,
+        "model_settings": getattr(model, "settings", None),
         "harness": {"version": harness.version, "digest": harness.digest},
         "limits": asdict(limits),
     })

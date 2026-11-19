@@ -2,13 +2,15 @@
 
 import json
 import re
+import shutil
+import sqlite3
 from contextlib import closing
 from pathlib import Path
+from tempfile import TemporaryDirectory
 from typing import Any
 
 from enterprise_ops.sandbox import RunSandbox
 from enterprise_ops.storage.audit import stamp
-from enterprise_ops.storage.sqlite import connect
 
 
 _PRIVATE_KEYS = {
@@ -54,18 +56,44 @@ class RunTrace:
             stream.write(json.dumps(scrub(value)) + "\n")
 
     def state_delta(self, sandbox: RunSandbox, tenant_id: str) -> None:
-        with closing(connect(sandbox.path)) as db:
-            rows = db.execute(
-                "SELECT id, call_id, actor_id, action, subject_id, reason_code, before_json,"
-                " after_json, evidence_json, state_revision FROM audit_events"
-                " WHERE tenant_id = ? AND run_id = ? ORDER BY state_revision, rowid",
-                (tenant_id, sandbox.run_id),
-            )
-            delta = []
-            for row in rows:
-                entry = dict(row)
-                for key in ("before", "after", "evidence"):
-                    data = entry.pop(f"{key}_json")
-                    entry[key] = json.loads(data) if data is not None else None
-                delta.append(entry)
-        self.write("state_delta", delta)
+        self.write("state_delta", read_state_delta(sandbox.path, tenant_id, sandbox.run_id))
+
+
+def read_state_delta(path: Path, tenant_id: str, run_id: str) -> list[dict]:
+    try:
+        return _read_audit(path, tenant_id, run_id, read_only=True)
+    except sqlite3.OperationalError as error:
+        journal = path.with_name(path.name + "-journal")
+        if (
+            getattr(error, "sqlite_errorcode", None) != sqlite3.SQLITE_READONLY_ROLLBACK
+            or journal.is_symlink() or not journal.is_file()
+        ):
+            raise
+        # SQLite may need to roll back a hot journal after an interrupted write.
+        # Recover a private copy so inspection leaves the retained run unchanged.
+        with TemporaryDirectory(prefix="eoai-audit-") as temporary:
+            directory = Path(temporary)
+            recovered = directory / path.name
+            shutil.copyfile(path, recovered)
+            shutil.copyfile(journal, directory / journal.name)
+            return _read_audit(recovered, tenant_id, run_id, read_only=False)
+
+
+def _read_audit(path: Path, tenant_id: str, run_id: str, *, read_only: bool) -> list[dict]:
+    mode = "ro" if read_only else "rw"
+    with closing(sqlite3.connect(path.as_uri() + f"?mode={mode}", uri=True)) as db:
+        db.row_factory = sqlite3.Row
+        rows = db.execute(
+            "SELECT id, call_id, actor_id, action, subject_id, reason_code, before_json,"
+            " after_json, evidence_json, state_revision FROM audit_events"
+            " WHERE tenant_id = ? AND run_id = ? ORDER BY state_revision, rowid",
+            (tenant_id, run_id),
+        )
+        delta = []
+        for row in rows:
+            entry = dict(row)
+            for key in ("before", "after", "evidence"):
+                data = entry.pop(f"{key}_json")
+                entry[key] = json.loads(data) if data is not None else None
+            delta.append(entry)
+    return delta
