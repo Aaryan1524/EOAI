@@ -2,9 +2,11 @@
 
 import json
 import re
+import shutil
 import sqlite3
 from contextlib import closing
 from pathlib import Path
+from tempfile import TemporaryDirectory
 from typing import Any
 
 from enterprise_ops.sandbox import RunSandbox
@@ -58,7 +60,28 @@ class RunTrace:
 
 
 def read_state_delta(path: Path, tenant_id: str, run_id: str) -> list[dict]:
-    with closing(sqlite3.connect(path.as_uri() + "?mode=ro", uri=True)) as db:
+    try:
+        return _read_audit(path, tenant_id, run_id, read_only=True)
+    except sqlite3.OperationalError as error:
+        journal = path.with_name(path.name + "-journal")
+        if (
+            getattr(error, "sqlite_errorcode", None) != sqlite3.SQLITE_READONLY_ROLLBACK
+            or journal.is_symlink() or not journal.is_file()
+        ):
+            raise
+        # SQLite may need to roll back a hot journal after an interrupted write.
+        # Recover a private copy so inspection leaves the retained run unchanged.
+        with TemporaryDirectory(prefix="eoai-audit-") as temporary:
+            directory = Path(temporary)
+            recovered = directory / path.name
+            shutil.copyfile(path, recovered)
+            shutil.copyfile(journal, directory / journal.name)
+            return _read_audit(recovered, tenant_id, run_id, read_only=False)
+
+
+def _read_audit(path: Path, tenant_id: str, run_id: str, *, read_only: bool) -> list[dict]:
+    mode = "ro" if read_only else "rw"
+    with closing(sqlite3.connect(path.as_uri() + f"?mode={mode}", uri=True)) as db:
         db.row_factory = sqlite3.Row
         rows = db.execute(
             "SELECT id, call_id, actor_id, action, subject_id, reason_code, before_json,"

@@ -91,6 +91,6 @@ ops-agent reset baseline --id fresh
 
 The default artifact directory is `runs/`. Pass `--root PATH` before the command to choose a different location. Seed the snapshot with `--task acme-paged-v2` or `--task compound-escalation` for either v2 workflow. An escalation uses a write scope only with `--authorize-writes`, and replaying that authorization requires the flag again.
 
-Replay checks the original snapshot, task, tool declarations, fault plan, model digest and settings, and harness. It creates a fresh sandbox, then samples the pinned model again. `--harness v2` explicitly changes the instructions for the new run. For interrupted runs, `inspect` can recover committed audit events from the retained SQLite copy.
+Replay checks the original snapshot, task, tool declarations, fault plan, model digest and settings, and harness. It creates a fresh sandbox and makes new inference requests, verifying the digest of the installed model tag around inference. `--harness v2` explicitly changes the instructions for the new run. For interrupted runs, `inspect` can recover committed audit events without changing the retained SQLite files.
 
 Local-model smoke testing verified invoice listing, ambiguity handling, and a guided ticket write with read-back. The unassisted reference escalation remains unverified on the installed model.

@@ -1,4 +1,7 @@
 import json
+import sqlite3
+import subprocess
+import sys
 from contextlib import closing
 from dataclasses import asdict
 from datetime import datetime
@@ -214,6 +217,42 @@ def test_inspect_reads_committed_audit_from_an_interrupted_run(tmp_path, capsys,
     assert inspected["output"] is None
     assert inspected["summary"]["status"] == "interrupted"
     assert [entry["action"] for entry in inspected["audit"]] == ["payment.transition"]
+
+
+def test_inspect_recovers_hot_journal_without_changing_retained_files(tmp_path, capsys, local_provider):
+    seeded = _invoke(tmp_path, capsys, "seed", "base")
+    original = _invoke(tmp_path, capsys, "run", "base", "--task", "acme-list", "--id", "first")
+    trace = Path(original["trace_path"])
+    sandbox = tmp_path / "sandboxes" / original["run_key"] / "run.sqlite3"
+    with closing(connect(sandbox)) as db:
+        transition_payment(
+            db, Principal("northstar_property", "simulator"), "PMT-2", "posted",
+            FrozenClock(datetime.fromisoformat(seeded["clock"])), run_id="first",
+        )
+    subprocess.run([
+        sys.executable, "-c",
+        """
+import os
+import sqlite3
+import sys
+db = sqlite3.connect(sys.argv[1], isolation_level=None)
+db.execute('PRAGMA cache_size=2')
+db.execute('BEGIN IMMEDIATE')
+db.execute("UPDATE document_versions SET content = ?", ("uncommitted" * 150000,))
+os._exit(0)
+""",
+        str(sandbox),
+    ], check=True)
+    journal = sandbox.with_name(sandbox.name + "-journal")
+    database_bytes, journal_bytes = sandbox.read_bytes(), journal.read_bytes()
+    with closing(sqlite3.connect(sandbox.as_uri() + "?mode=ro", uri=True)) as db:
+        with pytest.raises(sqlite3.OperationalError) as failed:
+            db.execute("SELECT count(*) FROM audit_events")
+    assert failed.value.sqlite_errorcode == sqlite3.SQLITE_READONLY_ROLLBACK
+    (trace / "final_output.json").unlink()
+    inspected = _invoke(tmp_path, capsys, "inspect", "first")
+    assert [entry["action"] for entry in inspected["audit"]] == ["payment.transition"]
+    assert sandbox.read_bytes() == database_bytes and journal.read_bytes() == journal_bytes
 
 
 def test_rejects_unsafe_paths_unknown_runs_and_snapshot_mismatch(tmp_path, capsys, local_provider):

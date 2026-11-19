@@ -447,7 +447,7 @@ def run_task(
         raise ValueError("Harness instructions do not match their digest")
     if isinstance(model, OllamaModel):
         model_digest = model_digest or model.model_digest(timeout=min(5.0, limits.deadline_seconds))
-        model.pin_model_digest(model_digest)
+        model_digest = model.pin_model_digest(model_digest)
     sandbox = snapshot.clone(runs_root / "sandboxes", run_id)
     with closing(connect(sandbox.path)) as db:
         authorize(db, task.principal, Capability.READ)
