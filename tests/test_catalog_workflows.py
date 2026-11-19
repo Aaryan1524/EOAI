@@ -45,11 +45,14 @@ def test_level_three_pages_changed_schema_and_supports_due_dates(tmp_path):
     assert output.status == 'resolved' and output.coverage.invoice_search_exhausted
     assert [item.invoice_id for item in output.decisions] == [f'INV-{code}' for code in range(104, 111)]
     assert output.decisions[0].effective_due_date == '2026-10-01'
+    assert output.decisions[0].stated_due_date == '2026-09-16'
+    assert output.decisions[0].stated_due_date_differs
     assert any(item.source_id == 'D-ACME-SIGNED' for item in output.evidence)
     assert not output.actions
     pages = [event for event in _trace(result) if event.get('tool') == 'invoice.search']
     assert all('account_ref' in event['arguments'] for event in pages)
     assert all(event['response']['meta']['schema_version'] == 'v2' for event in pages)
+    assert all(event['arguments']['page_cursor'] == '[redacted]' for event in pages[1:])
     assert len(pages) == 3
 
 

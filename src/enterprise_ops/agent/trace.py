@@ -13,7 +13,7 @@ from enterprise_ops.storage.sqlite import connect
 
 _PRIVATE_KEYS = {
     "api_key", "authorization", "password", "secret", "access_token",
-    "preview_token", "idempotency_key", "command_key", "cursor", "next_cursor",
+    "preview_token", "idempotency_key", "command_key", "cursor", "next_cursor", "page_cursor",
 }
 _CREDENTIAL = re.compile(
     r"(?i)(?:\b(?:Bearer\s+[A-Za-z0-9._~+/-]{8,}|sk-[A-Za-z0-9_-]{8,})|"

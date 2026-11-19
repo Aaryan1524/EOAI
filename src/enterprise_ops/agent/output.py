@@ -57,6 +57,8 @@ class Decision(StrictModel):
     decision: AssessmentStatus
     reason_codes: list[str]
     effective_due_date: IsoDate | None
+    stated_due_date: IsoDate | None
+    stated_due_date_differs: bool | None
     days_past_due: int | None
     outstanding_minor: MinorUnits | None
     currency: Currency | None
@@ -412,16 +414,20 @@ class Ledger:
             )
             if not ids:
                 continue
-            ids.extend(evidence.from_call(
+            stated_date_ids = evidence.from_call(
                 call, "invoice", subject=data.invoice_id, version=data.invoice_version,
                 invoice_id=data.invoice_id, ids=data.terms.evidence_ids, locator="stated_due_date",
-            ))
+            )
+            ids.extend(stated_date_ids)
             ids.extend(evidence.from_call(call, "document_span", ids=data.terms.evidence_ids))
             decisions[data.invoice_id] = (
                 data,
                 Decision(
                     invoice_id=data.invoice_id, decision=data.status, reason_codes=data.reason_codes,
-                    effective_due_date=data.effective_due_date, days_past_due=data.days_past_due,
+                    effective_due_date=data.effective_due_date,
+                    stated_due_date=data.terms.stated_due_date if stated_date_ids else None,
+                    stated_due_date_differs=data.terms.stated_due_date_differs if stated_date_ids else None,
+                    days_past_due=data.days_past_due,
                     outstanding_minor=data.outstanding_minor, currency=data.currency, evidence_ids=ids,
                 ),
             )
