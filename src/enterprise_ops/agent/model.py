@@ -206,6 +206,16 @@ class OllamaModel:
         if type(context_window) is not int or context_window <= 0:
             raise ModelError("Invalid model context window")
         self._context_window = context_window
+        self._pinned_digest: str | None = None
+
+    @property
+    def settings(self) -> dict:
+        return {"context_window": self._context_window, "temperature": 0.0, "seed": 0}
+
+    def pin_model_digest(self, expected: str) -> None:
+        if not isinstance(expected, str) or not re.fullmatch(r"[a-f0-9]{64}", expected):
+            raise ModelError("Invalid model digest")
+        self._pinned_digest = expected
 
     def turn(
         self,
@@ -218,6 +228,11 @@ class OllamaModel:
     ) -> ModelTurn:
         if type(max_output_tokens) is not int or max_output_tokens <= 0:
             raise ModelError("Invalid model output token limit")
+        if self._pinned_digest is not None:
+            started = monotonic()
+            if self.model_digest(timeout=timeout) != self._pinned_digest:
+                raise ModelError("Installed model digest changed")
+            timeout -= monotonic() - started
         try:
             tools, logical_names = _provider_tools(declarations)
             messages = _provider_messages(instructions, transcript, logical_names)

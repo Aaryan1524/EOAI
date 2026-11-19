@@ -75,3 +75,22 @@ The runner uses short model-facing references for cursors, evidence and previews
 The catalog in `enterprise_ops.fixtures.catalog` includes a paged Acme review and a compound Harborline escalation. Both use the v2 invoice search declaration with `account_ref`, `page_size`, and `page_cursor`. Baseline scenarios continue to use v1. Each snapshot selects one profile for the entire run.
 
 Run `python -m pytest -q tests/test_catalog_workflows.py` to exercise both higher-complexity workflows. Harborline includes overlapping amendments, a disputed invoice, a settled invoice, an existing ticket, and a transient search fault. The test checks that the run reports the conflict and creates and verifies the one eligible missing ticket.
+
+## Operate and replay a run
+
+After installing the package and starting Ollama, use the `ops-agent` command.
+
+```sh
+ops-agent tasks
+ops-agent seed baseline
+ops-agent run baseline --task acme-list --id first --harness v1
+ops-agent inspect first
+ops-agent replay first --id second --harness v2
+ops-agent reset baseline --id fresh
+```
+
+The default artifact directory is `runs/`. Pass `--root PATH` before the command to choose a different location. Seed the snapshot with `--task acme-paged-v2` or `--task compound-escalation` for either v2 workflow. An escalation uses a write scope only with `--authorize-writes`, and replaying that authorization requires the flag again.
+
+Replay checks the original snapshot, task, tool declarations, fault plan, model digest and settings, and harness. It creates a fresh sandbox, then samples the pinned model again. `--harness v2` explicitly changes the instructions for the new run. For interrupted runs, `inspect` can recover committed audit events from the retained SQLite copy.
+
+Local-model smoke testing verified invoice listing, ambiguity handling, and a guided ticket write with read-back. The unassisted reference escalation remains unverified on the installed model.

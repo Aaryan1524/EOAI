@@ -200,3 +200,7 @@ class FaultPlan:
     def fresh(self) -> "FaultPlan":
         """Recreate the script with independent attempt counters."""
         return FaultPlan(self._steps)
+
+    @property
+    def steps(self) -> tuple[FaultStep, ...]:
+        return self._steps

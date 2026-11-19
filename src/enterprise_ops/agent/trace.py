@@ -2,13 +2,13 @@
 
 import json
 import re
+import sqlite3
 from contextlib import closing
 from pathlib import Path
 from typing import Any
 
 from enterprise_ops.sandbox import RunSandbox
 from enterprise_ops.storage.audit import stamp
-from enterprise_ops.storage.sqlite import connect
 
 
 _PRIVATE_KEYS = {
@@ -54,18 +54,23 @@ class RunTrace:
             stream.write(json.dumps(scrub(value)) + "\n")
 
     def state_delta(self, sandbox: RunSandbox, tenant_id: str) -> None:
-        with closing(connect(sandbox.path)) as db:
-            rows = db.execute(
-                "SELECT id, call_id, actor_id, action, subject_id, reason_code, before_json,"
-                " after_json, evidence_json, state_revision FROM audit_events"
-                " WHERE tenant_id = ? AND run_id = ? ORDER BY state_revision, rowid",
-                (tenant_id, sandbox.run_id),
-            )
-            delta = []
-            for row in rows:
-                entry = dict(row)
-                for key in ("before", "after", "evidence"):
-                    data = entry.pop(f"{key}_json")
-                    entry[key] = json.loads(data) if data is not None else None
-                delta.append(entry)
-        self.write("state_delta", delta)
+        self.write("state_delta", read_state_delta(sandbox.path, tenant_id, sandbox.run_id))
+
+
+def read_state_delta(path: Path, tenant_id: str, run_id: str) -> list[dict]:
+    with closing(sqlite3.connect(path.as_uri() + "?mode=ro", uri=True)) as db:
+        db.row_factory = sqlite3.Row
+        rows = db.execute(
+            "SELECT id, call_id, actor_id, action, subject_id, reason_code, before_json,"
+            " after_json, evidence_json, state_revision FROM audit_events"
+            " WHERE tenant_id = ? AND run_id = ? ORDER BY state_revision, rowid",
+            (tenant_id, run_id),
+        )
+        delta = []
+        for row in rows:
+            entry = dict(row)
+            for key in ("before", "after", "evidence"):
+                data = entry.pop(f"{key}_json")
+                entry[key] = json.loads(data) if data is not None else None
+            delta.append(entry)
+    return delta

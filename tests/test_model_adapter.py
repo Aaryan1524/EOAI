@@ -75,6 +75,18 @@ def test_response_rejects_duplicate_keys_in_native_tool_arguments(http):
         turn()
 
 
+def test_pinned_model_rejects_changed_digest_before_inference(http):
+    _, client = http
+    model = OllamaModel("qwen3:4b-instruct")
+    model.pin_model_digest("a" * 64)
+    client.getresponse.return_value = Response(json.dumps({
+        "models": [{"name": model.model_id, "digest": "b" * 64}],
+    }).encode())
+    with pytest.raises(ModelError, match="digest changed"):
+        turn(model)
+    assert [request.args[:2] for request in client.request.call_args_list] == [("GET", "/api/tags")]
+
+
 def test_ollama_turn_round_trip(http):
     factory, client = http
     chat(client, calls=[

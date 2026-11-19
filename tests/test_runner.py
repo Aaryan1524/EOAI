@@ -5,6 +5,7 @@ from dataclasses import replace
 import pytest
 
 from enterprise_ops.agent.handles import ToolHandles
+from enterprise_ops.agent.harness import load_harness
 from enterprise_ops.agent.model import ModelError, ModelTurn, ToolCall
 from enterprise_ops.agent.runner import RunLimits, RunTask, run_task
 from enterprise_ops.domain.entities import Capability, Principal
@@ -329,3 +330,40 @@ def test_model_handles_round_trip_only_within_their_kind_and_run():
         "evidence_ids": [evidence, preview], "page_cursor": cursor, "preview_token": preview,
     }) == {"evidence_ids": ["ev_record", preview], "page_cursor": "opaque-cursor", "preview_token": "opaque-preview"}
     assert ToolHandles().for_gateway({"preview_token": preview}) == {"preview_token": preview}
+
+
+def test_harnesses_run_from_identical_snapshots_without_sharing_writes(tmp_path):
+    snapshot = seed_snapshot(tmp_path / "snapshots", "same-baseline")
+    original = snapshot.path.read_bytes()
+    task = _assignment()
+
+    def execute(version):
+        model = ScriptModel([
+            ("invoice.get", {"invoice_id": "INV-104"}),
+            ("invoice.assess", {"invoice_id": "INV-104"}),
+            ("ticket.preview_create", _preview),
+            ("ticket.create", _commit),
+            '{"customer_id":"acme","review_reason":null}',
+        ])
+        return run_task(
+            snapshot, task, model, run_id=version, runs_root=tmp_path / "runs",
+            harness=load_harness(version), scenario="baseline", model_digest="a" * 64,
+        )
+
+    first, second = execute("v1"), execute("v2")
+    assert snapshot.path.read_bytes() == original
+    assert first.sandbox.path != second.sandbox.path
+    first_manifest, second_manifest = [
+        json.loads((result.trace_path / "manifest.json").read_text()) for result in (first, second)
+    ]
+    for field in ("snapshot_digest", "profile", "tool_declarations_digest", "task_digest",
+                  "fault_plan_digest", "write_scope_digest", "model_digest", "as_of", "limits"):
+        assert first_manifest[field] == second_manifest[field]
+    assert first_manifest["harness"]["digest"] != second_manifest["harness"]["digest"]
+    for result in (first, second):
+        assert result.output.status == "resolved"
+        action, = result.output.actions
+        assert action.status == "completed"
+        with closing(connect(result.sandbox.path)) as db:
+            assert db.execute("SELECT id FROM audit_events").fetchone()[0] == action.audit_id
+    assert first.output.actions[0].audit_id != second.output.actions[0].audit_id
