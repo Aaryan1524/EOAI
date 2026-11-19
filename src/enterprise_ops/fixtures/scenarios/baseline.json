@@ -20,6 +20,7 @@
     {"tenant": "northstar_property", "id": "supervisor", "role": "supervisor"},
     {"tenant": "northstar_property", "id": "simulator", "role": "simulator"},
     {"tenant": "bluewater_services", "id": "analyst", "role": "analyst"},
+    {"tenant": "bluewater_services", "id": "supervisor", "role": "supervisor"},
     {"tenant": "bluewater_services", "id": "simulator", "role": "simulator"}
   ],
   "customers": [

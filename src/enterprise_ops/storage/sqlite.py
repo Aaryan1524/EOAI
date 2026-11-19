@@ -14,15 +14,22 @@ def connect(path: str | Path) -> sqlite3.Connection:
 
 
 def initialize(connection: sqlite3.Connection) -> None:
-    """Apply the initial migration to an empty database."""
-    migration = Path(__file__).with_name("migrations") / "0001_initial.sql"
-    if connection.in_transaction:
-        raise ValueError("Initialize outside an active transaction")
-    try:
-        connection.executescript(f"BEGIN IMMEDIATE;\n{migration.read_text(encoding='utf-8')}\nCOMMIT;")
-    except BaseException:
-        connection.rollback()
-        raise
+    """Initialize or upgrade a database atomically."""
+    directory = Path(__file__).with_name("migrations")
+    migrations = ("0001_initial.sql", "0002_actions.sql")
+    with transaction(connection, write=True):
+        version = connection.execute("PRAGMA user_version").fetchone()[0]
+        if version > len(migrations):
+            raise ValueError("Database schema is newer than this application")
+        for name in migrations[version:]:
+            statement = ""
+            for line in (directory / name).read_text(encoding="utf-8").splitlines(keepends=True):
+                statement += line
+                if sqlite3.complete_statement(statement):
+                    connection.execute(statement)
+                    statement = ""
+            if statement.strip():
+                raise ValueError(f"Incomplete migration: {name}")
 
 
 @contextmanager
