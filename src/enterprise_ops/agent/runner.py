@@ -111,6 +111,9 @@ class _Run:
         self.limits = limits
         self.trace = trace
         self.declarations = gateway.declarations()
+        self._fields = {
+            tool["name"]: frozenset(tool["arguments"].get("properties", {})) for tool in self.declarations
+        }
         self.ledger = Ledger(task.operation, task.customer_query, task.account, task.assigned_invoices)
         self.tool_calls = 0
         self.model_turns = 0
@@ -132,12 +135,16 @@ class _Run:
     def dispatch(self, name: str, args: dict | None) -> ToolResponse:
         self.tool_calls += 1
         response = self.gateway.invoke(name, args)
+        fields = self._fields.get(name, ())
+        trace_name = name if name in self._fields else "unknown"
         self.trace.event(
-            "tool", tool=name, arguments=args, response=response.model_dump(mode="json")
+            "tool", tool=trace_name,
+            arguments={key: value for key, value in (args or {}).items() if key in fields},
+            response=response.model_dump(mode="json"),
         )
         self.ledger.record(name, args or {}, response)
         if not response.ok:
-            self.error(response.error.code, tool=name, call_id=response.meta.call_id)
+            self.error(response.error.code, tool=trace_name, call_id=response.meta.call_id)
         return response
 
     def act(self, name: str, args: dict | None) -> ToolResponse:
@@ -181,7 +188,7 @@ class _Run:
             self.output_tokens += turn.output_tokens
             self.trace.event(
                 "model_turn", input_tokens=turn.input_tokens, output_tokens=turn.output_tokens,
-                proposed_tools=[call.name for call in turn.calls],
+                proposed_tools=[call.name if call.name in self._fields else "unknown" for call in turn.calls],
             )
             if self.remaining <= 0:
                 return None, "deadline"
@@ -228,9 +235,21 @@ def _arguments(raw: str) -> dict | None:
         return None
     try:
         value = json.loads(raw)
-        return value if isinstance(value, dict) else None
+        if not isinstance(value, dict):
+            return None
+        return value if _bounded_json(value) else None
     except (ValueError, RecursionError):
         return None
+
+
+def _bounded_json(value: object, depth: int = 0) -> bool:
+    if depth > 8:
+        return False
+    if isinstance(value, dict):
+        return all(_bounded_json(item, depth + 1) for item in value.values())
+    if isinstance(value, list):
+        return all(_bounded_json(item, depth + 1) for item in value)
+    return not isinstance(value, float) or abs(value) < float("inf")
 
 
 def run_task(

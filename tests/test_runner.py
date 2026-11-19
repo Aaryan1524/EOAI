@@ -155,3 +155,28 @@ def test_provider_failure_keeps_observed_facts_and_scrubs_trace(tmp_path):
     assert not result.output.coverage.invoice_search_exhausted
     artifacts = "".join(path.read_text() for path in result.trace_path.iterdir())
     assert "secret012345" not in artifacts and "sk-abcdef1234567890" not in artifacts
+
+
+def test_rejected_tool_arguments_cannot_leak_preview_or_break_trace(tmp_path):
+    sensitive = {}
+
+    def corrupt(preview):
+        sensitive.update(preview)
+        return {
+            "invoice_id": preview["preview_token"] + "\ud800",
+            "unexpected": preview["idempotency_key"],
+        }
+
+    result = _run(tmp_path, _assignment(), [
+        ("invoice.get", {"invoice_id": "INV-104"}),
+        ("invoice.assess", {"invoice_id": "INV-104"}),
+        ("ticket.preview_create", _preview),
+        ("invoice.get", corrupt),
+        '{"customer_id":"acme","review_reason":null}',
+    ])
+    trace = (result.trace_path / "trace.jsonl").read_text()
+    assert sensitive["preview_token"] not in trace
+    assert sensitive["idempotency_key"] not in trace
+    assert "unexpected" not in trace
+    assert result.output.status == "partial"
+    assert (result.trace_path / "final_output.json").is_file()

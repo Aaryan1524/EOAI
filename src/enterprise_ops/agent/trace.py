@@ -15,13 +15,16 @@ _PRIVATE_KEYS = {
     "api_key", "authorization", "password", "secret", "access_token",
     "preview_token", "idempotency_key", "command_key", "cursor", "next_cursor",
 }
-_CREDENTIAL = re.compile(r"(?i)\b(?:Bearer\s+[A-Za-z0-9._~+/-]{8,}|sk-[A-Za-z0-9_-]{8,})")
+_CREDENTIAL = re.compile(
+    r"(?i)(?:\b(?:Bearer\s+[A-Za-z0-9._~+/-]{8,}|sk-[A-Za-z0-9_-]{8,})|"
+    r"(?:preview|command)_[0-9a-f]{32}|[A-Za-z0-9_+/=-]{96,})"
+)
 
 
 def scrub(value: Any) -> Any:
     if isinstance(value, dict):
         return {
-            key: "[redacted]" if key.casefold() in _PRIVATE_KEYS and item is not None else scrub(item)
+            scrub(key): "[redacted]" if key.casefold() in _PRIVATE_KEYS and item is not None else scrub(item)
             for key, item in value.items()
         }
     if isinstance(value, (list, tuple)):
@@ -41,14 +44,14 @@ class RunTrace:
     def write(self, name: str, value: Any) -> None:
         target = self.path / f"{name}.json"
         temporary = target.with_suffix(".tmp")
-        temporary.write_text(json.dumps(scrub(value), indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+        temporary.write_text(json.dumps(scrub(value), indent=2) + "\n", encoding="utf-8")
         temporary.replace(target)
 
     def event(self, kind: str, **fields: Any) -> None:
         self.index += 1
         value = {"ordinal": self.index, "event": kind, "as_of": self.as_of, **fields}
         with (self.path / "trace.jsonl").open("a", encoding="utf-8") as stream:
-            stream.write(json.dumps(scrub(value), ensure_ascii=False) + "\n")
+            stream.write(json.dumps(scrub(value)) + "\n")
 
     def state_delta(self, sandbox: RunSandbox, tenant_id: str) -> None:
         with closing(connect(sandbox.path)) as db:
