@@ -35,7 +35,9 @@ class RunTask:
     write_scope: WriteScope | None = None
 
     def __post_init__(self) -> None:
-        if not self.id or not self.request.strip() or len(self.request) > 4096:
+        if not isinstance(self.id, str) or not 1 <= len(self.id) <= 128:
+            raise ValueError("Task ID must have between 1 and 128 characters")
+        if not isinstance(self.request, str) or not self.request.strip() or len(self.request) > 4096:
             raise ValueError("Task requires an ID and a bounded request")
         if self.operation not in ("list_invoices", "review_invoices", "escalate"):
             raise ValueError("Unsupported task operation")
@@ -47,6 +49,11 @@ class RunTask:
             or (self.invoice_ids is not None and self.invoice_ids != self.write_scope.invoice_ids)
         ):
             raise ValueError("Task and write scope do not agree")
+        targets = (self.account,) if self.account is not None else ()
+        if any(not isinstance(item, str) or not 1 <= len(item) <= 128 for item in (
+            *targets, *(self.assigned_invoices or ()),
+        )):
+            raise ValueError("Task customer and invoice IDs must have between 1 and 128 characters")
 
     @property
     def account(self) -> str | None:
@@ -122,6 +129,8 @@ class _Run:
         self.errors: list[dict] = []
         self.deadline = monotonic() + limits.deadline_seconds
         self.previews: dict[str, str] = {}
+        self.offers: dict[str, tuple[str, dict]] = {}
+        self.attempted: set[str] = set()
 
     @property
     def remaining(self) -> float:
@@ -150,9 +159,20 @@ class _Run:
     def act(self, name: str, args: dict | None) -> ToolResponse:
         response = self.dispatch(name, args)
         if name == "ticket.preview_create" and response.ok and response.data.preview_token is not None:
-            self.previews[response.data.preview_token] = response.data.invoice_id
+            preview = response.data
+            token = preview.preview_token
+            self.previews[token] = preview.invoice_id
+            command = "ticket.create" if preview.decision == "ready_to_create" else "approval.request"
+            self.offers[token] = (command, {
+                "preview_token": token, "idempotency_key": preview.idempotency_key,
+                "expected_tenant_revision": preview.tenant_revision,
+                "expected_invoice_version": preview.invoice_version,
+                "expected_policy_version": preview.policy_version,
+            })
         if name not in _WRITES:
             return response
+        if args and isinstance(args.get("preview_token"), str):
+            self.attempted.add(args["preview_token"])
         if response.ok:
             if self.remaining > 0 and self.tool_calls < self.limits.tool_calls:
                 tool, argument = _WRITES[name]
@@ -168,6 +188,7 @@ class _Run:
             "request": self.task.request, **self.task.public_context(),
         })}]
         seen_calls: set[str] = set()
+        offered_followup = False
         for _ in range(self.limits.model_turns):
             if self.remaining <= 0:
                 return None, "deadline"
@@ -196,17 +217,32 @@ class _Run:
                 return None, "token_budget"
             if not turn.calls and turn.final is not None:
                 try:
-                    if len(turn.final) > 4096:
-                        raise ValueError("Final choice exceeds limit")
-                    final = turn.final.strip()
-                    if final.startswith("```json\n") and final.endswith("\n```"):
-                        final = final[8:-4].strip()
-                    choice = FinalChoice.model_validate_json(final)
-                    self.trace.event("model_final", choice=choice.model_dump())
-                    return choice, "model_final"
-                except (ValidationError, ValueError):
+                    choice = _final_choice(turn.final)
+                except (ValidationError, ValueError, RecursionError):
                     self.error("INVALID_FINAL_CHOICE")
                     return None, "invalid_final"
+                if (
+                    choice.review_reason is None and not offered_followup
+                    and self.tool_calls + 2 <= self.limits.tool_calls and self.model_turns < self.limits.model_turns
+                ):
+                    pending = next((key for key in reversed(self.offers) if key not in self.attempted), None)
+                    if pending is not None:
+                        tool, recommended = self.offers[pending]
+                        transcript.append({"role": "user", "content": canonical({
+                            "runtime_feedback": (
+                                "The authorized action is still open. If you intend to submit it, "
+                                "call the indicated declared tool with these exact arguments now. "
+                                "Otherwise return only the final JSON with unquoted null when appropriate."
+                            ),
+                            "pending_tool": tool,
+                            "provider_tool_name": tool.replace(".", "_"),
+                            "arguments": recommended,
+                        })})
+                        self.trace.event("action_followup", tool=tool, invoice_id=self.previews[pending])
+                        offered_followup = True
+                        continue
+                self.trace.event("model_final", choice=choice.model_dump())
+                return choice, "model_final"
             if len(turn.calls) != 1 or turn.final is not None or turn.calls[0].id in seen_calls:
                 self.error("INVALID_MODEL_TURN")
                 return None, "invalid_turn"
@@ -240,6 +276,18 @@ def _arguments(raw: str) -> dict | None:
         return value if _bounded_json(value) else None
     except (ValueError, RecursionError):
         return None
+
+
+def _final_choice(raw: str) -> FinalChoice:
+    if len(raw) > 4096:
+        raise ValueError("Final choice exceeds limit")
+    final = raw.strip()
+    if final.startswith("```json\n") and final.endswith("\n```"):
+        final = final[8:-4].strip()
+    choice = json.loads(final)
+    if isinstance(choice, dict) and choice.get("review_reason") == "null":
+        choice["review_reason"] = None
+    return FinalChoice.model_validate(choice)
 
 
 def _bounded_json(value: object, depth: int = 0) -> bool:

@@ -266,11 +266,8 @@ class Ledger:
         ):
             return
         if not response.ok:
-            # A stale cursor invalidates older reads. Its error payload supplies no business facts.
-            if (
-                revision is not None and self._sandbox_id is not None
-                and response.error and response.error.code == "STALE_REVISION"
-            ):
+            # An authorized lookup can observe a newer revision even when its record is absent.
+            if revision is not None and self._sandbox_id is not None:
                 self._observed_revision = max(revision, self._observed_revision or 0)
             if name in ACTION_TYPES:
                 try:

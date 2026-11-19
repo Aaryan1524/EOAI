@@ -1,5 +1,8 @@
 import json
 from contextlib import closing
+from dataclasses import replace
+
+import pytest
 
 from enterprise_ops.agent.model import ModelError, ModelTurn, ToolCall
 from enterprise_ops.agent.runner import RunLimits, RunTask, run_task
@@ -32,7 +35,9 @@ class ScriptModel:
             return ModelTurn(final=step, input_tokens=10, output_tokens=5)
         name, args = step
         if callable(args):
-            args = args(json.loads(transcript[-1]["output"])["data"])
+            last = transcript[-1]
+            context = json.loads(last["content"]) if last.get("role") == "user" else json.loads(last["output"])["data"]
+            args = args(context)
         return ModelTurn(
             calls=(ToolCall(f"tool-{self.index}", name, json.dumps(args)),),
             input_tokens=10, output_tokens=5,
@@ -173,6 +178,7 @@ def test_rejected_tool_arguments_cannot_leak_preview_or_break_trace(tmp_path):
         ("ticket.preview_create", _preview),
         ("invoice.get", corrupt),
         '{"customer_id":"acme","review_reason":null}',
+        '{"customer_id":"acme","review_reason":null}',
     ])
     trace = (result.trace_path / "trace.jsonl").read_text()
     assert sensitive["preview_token"] not in trace
@@ -180,3 +186,23 @@ def test_rejected_tool_arguments_cannot_leak_preview_or_break_trace(tmp_path):
     assert "unexpected" not in trace
     assert result.output.status == "partial"
     assert (result.trace_path / "final_output.json").is_file()
+
+
+def test_overlong_task_id_fails_before_any_write():
+    with pytest.raises(ValueError, match="Task ID"):
+        replace(_assignment(), id="x" * 129)
+
+
+def test_ready_preview_gets_one_followup_and_still_requires_a_model_tool_call(tmp_path):
+    result = _run(tmp_path, _assignment(), [
+        ("invoice.get", {"invoice_id": "INV-104"}),
+        ("invoice.assess", {"invoice_id": "INV-104"}),
+        ("ticket.preview_create", _preview),
+        '{"customer_id":"acme","review_reason":"null"}',
+        ("ticket.create", lambda context: context["arguments"]),
+        '{"customer_id":"acme","review_reason":null}',
+    ])
+    assert result.output.status == "resolved"
+    assert [action.status for action in result.output.actions] == ["completed"]
+    events = [json.loads(line)["event"] for line in (result.trace_path / "trace.jsonl").read_text().splitlines()]
+    assert events.count("action_followup") == 1

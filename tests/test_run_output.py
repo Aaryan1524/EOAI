@@ -117,7 +117,8 @@ def test_empty_continuation_preserves_cursor_chain(sandbox):
     assert finish(ledger, gateway).status == "resolved"
 
 
-def test_external_revision_suppresses_stale_membership_and_decision(sandbox):
+@pytest.mark.parametrize("stale_cursor", [True, False])
+def test_external_revision_suppresses_stale_membership_and_decision(sandbox, stale_cursor):
     gateway = ToolGateway(sandbox, PRINCIPAL)
     ledger = Ledger("review_invoices", customer_id=ACCOUNT)
     first = invoke(ledger, gateway, "invoice.search", customer_id=ACCOUNT, limit=2)
@@ -125,7 +126,10 @@ def test_external_revision_suppresses_stale_membership_and_decision(sandbox):
     assert finish(ledger, gateway).decisions[0].outstanding_minor == assessment.outstanding_minor
     with closing(connect(sandbox.path)) as db:
         transition_payment(db, Principal(PRINCIPAL.tenant_id, "simulator"), "PMT-2", "posted", sandbox.clock)
-    invoke(ledger, gateway, "invoice.search", customer_id=ACCOUNT, limit=2, cursor=first.next_cursor, ok=False)
+    if stale_cursor:
+        invoke(ledger, gateway, "invoice.search", customer_id=ACCOUNT, limit=2, cursor=first.next_cursor, ok=False)
+    else:
+        invoke(ledger, gateway, "invoice.get", invoice_id="unavailable", ok=False)
     output = finish(ledger, gateway)
     assert output.coverage.observed_invoice_ids == []
     assert output.decisions == output.evidence == []
