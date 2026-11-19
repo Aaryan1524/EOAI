@@ -6,8 +6,11 @@ from contextlib import contextmanager
 from pathlib import Path
 
 
-def connect(path: str | Path) -> sqlite3.Connection:
-    connection = sqlite3.connect(path, isolation_level=None)
+DEFAULT_BUSY_TIMEOUT = 5.0
+
+
+def connect(path: str | Path, *, timeout: float = DEFAULT_BUSY_TIMEOUT) -> sqlite3.Connection:
+    connection = sqlite3.connect(path, isolation_level=None, timeout=timeout)
     connection.row_factory = sqlite3.Row
     connection.execute("PRAGMA foreign_keys = ON")
     return connection
