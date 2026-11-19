@@ -188,9 +188,10 @@ def test_rejected_tool_arguments_cannot_leak_preview_or_break_trace(tmp_path):
     assert (result.trace_path / "final_output.json").is_file()
 
 
-def test_overlong_task_id_fails_before_any_write():
+@pytest.mark.parametrize("invalid_id", ["x" * 129, chr(0xD800)])
+def test_invalid_task_id_fails_before_any_write(invalid_id):
     with pytest.raises(ValueError, match="Task ID"):
-        replace(_assignment(), id="x" * 129)
+        replace(_assignment(), id=invalid_id)
 
 
 def test_ready_preview_gets_one_followup_and_still_requires_a_model_tool_call(tmp_path):

@@ -7,7 +7,7 @@ from pathlib import Path
 from time import monotonic
 from typing import Literal
 
-from pydantic import ValidationError
+from pydantic import TypeAdapter, ValidationError
 
 from enterprise_ops.agent.harness import Harness, load_harness
 from enterprise_ops.agent.model import Model, ModelError
@@ -35,8 +35,11 @@ class RunTask:
     write_scope: WriteScope | None = None
 
     def __post_init__(self) -> None:
-        if not isinstance(self.id, str) or not 1 <= len(self.id) <= 128:
-            raise ValueError("Task ID must have between 1 and 128 characters")
+        identifier = TypeAdapter(Id)
+        try:
+            identifier.validate_python(self.id, strict=True)
+        except ValidationError as error:
+            raise ValueError("Task ID must be a valid bounded identifier") from error
         if not isinstance(self.request, str) or not self.request.strip() or len(self.request) > 4096:
             raise ValueError("Task requires an ID and a bounded request")
         if self.operation not in ("list_invoices", "review_invoices", "escalate"):
@@ -49,11 +52,13 @@ class RunTask:
             or (self.invoice_ids is not None and self.invoice_ids != self.write_scope.invoice_ids)
         ):
             raise ValueError("Task and write scope do not agree")
-        targets = (self.account,) if self.account is not None else ()
-        if any(not isinstance(item, str) or not 1 <= len(item) <= 128 for item in (
-            *targets, *(self.assigned_invoices or ()),
-        )):
-            raise ValueError("Task customer and invoice IDs must have between 1 and 128 characters")
+        try:
+            if self.account is not None:
+                identifier.validate_python(self.account, strict=True)
+            for invoice_id in self.assigned_invoices or ():
+                identifier.validate_python(invoice_id, strict=True)
+        except ValidationError as error:
+            raise ValueError("Task customer and invoice IDs must be valid bounded identifiers") from error
 
     @property
     def account(self) -> str | None:
