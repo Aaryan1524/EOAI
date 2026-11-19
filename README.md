@@ -40,3 +40,30 @@ Expected output is `eligible 1000000 49`. The amount is in USD minor units.
 The host can supply a principal-bound `WriteScope` to authorize simulated actions. A write requires a current assessment, a preview, and a commit. To verify delivery, match the ticket and creation audit returned by `ticket.get` to the commit receipt. Retry a lost commit response with the exact same arguments and key.
 
 `RunSandbox.reset()` waits for admitted tool operations and returns a fresh copy with a new sandbox identity. Build a fresh gateway for that copy. The retired database stays available to the local operator for audit inspection. See the [design record](docs/milestone-0-design.md) for the complete protocol.
+
+## Run a task with a local model
+
+Start Ollama on loopback with an installed model that supports tools. The runtime accepts a model adapter, a snapshot, a task, and explicit limits. This example uses an already-installed `qwen3:4b-instruct` tag.
+
+```python
+from pathlib import Path
+from uuid import uuid4
+
+from enterprise_ops.agent.model import OllamaModel
+from enterprise_ops.agent.runner import RunTask, run_task
+from enterprise_ops.domain.entities import Principal
+from enterprise_ops.sandbox import seed_snapshot
+
+root = Path("runs") / uuid4().hex
+snapshot = seed_snapshot(root / "snapshots", "baseline")
+task = RunTask(
+    "acme-list", "List every invoice for Acme Property Group.",
+    Principal("northstar_property", "analyst"), "list_invoices",
+    customer_query="Acme Property Group",
+)
+result = run_task(snapshot, task, OllamaModel("qwen3:4b-instruct"), run_id="list", runs_root=root)
+print(result.output.model_dump_json(indent=2))
+print(result.trace_path)
+```
+
+Run artifacts contain the declared profile, snapshot and harness digests, observed tool results, validated output, and audit-backed state changes. The runtime records an action as completed after matching its durable receipt to read-back.
