@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "enterprise-ops"
+version = "0.1.0"
+description = "Deterministic enterprise operations sandbox"
+requires-python = ">=3.12"
+
+[project.optional-dependencies]
+test = ["pytest>=8.4,<10"]
+
+[tool.setuptools.package-data]
+enterprise_ops = ["storage/migrations/*.sql", "fixtures/scenarios/*.json"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
+addopts = "--strict-config --strict-markers"

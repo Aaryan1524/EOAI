@@ -1,0 +1,82 @@
+{
+  "simulation_time": "2026-11-19T20:00:00+00:00",
+  "tenants": [
+    {"id": "northstar_property", "name": "Northstar Property", "timezone": "America/New_York", "policy_id": "standard", "policy_version": 2},
+    {"id": "bluewater_services", "name": "Bluewater Services", "timezone": "America/Los_Angeles", "policy_id": "standard", "policy_version": 1}
+  ],
+  "policies": [
+    {"tenant": "northstar_property", "id": "standard", "version": 1, "threshold": 25, "exclude_disputed": 1, "requires_approval": 0},
+    {"tenant": "northstar_property", "id": "standard", "version": 2, "threshold": 30, "exclude_disputed": 1, "requires_approval": 0},
+    {"tenant": "bluewater_services", "id": "standard", "version": 1, "threshold": 15, "exclude_disputed": 0, "requires_approval": 1}
+  ],
+  "exclusions": [
+    {"tenant": "northstar_property", "policy_id": "standard", "version": 1, "subject": "customer", "status": "closed"},
+    {"tenant": "northstar_property", "policy_id": "standard", "version": 2, "subject": "customer", "status": "closed"},
+    {"tenant": "northstar_property", "policy_id": "standard", "version": 2, "subject": "customer", "status": "on_hold"}
+  ],
+  "users": [
+    {"tenant": "northstar_property", "id": "analyst", "role": "analyst"},
+    {"tenant": "northstar_property", "id": "viewer", "role": "viewer"},
+    {"tenant": "northstar_property", "id": "supervisor", "role": "supervisor"},
+    {"tenant": "northstar_property", "id": "simulator", "role": "simulator"},
+    {"tenant": "bluewater_services", "id": "analyst", "role": "analyst"},
+    {"tenant": "bluewater_services", "id": "simulator", "role": "simulator"}
+  ],
+  "customers": [
+    {"tenant": "northstar_property", "id": "acme", "name": "Acme Property Group", "status": "active", "aliases": ["Acme", "Acme Property Group"]},
+    {"tenant": "northstar_property", "id": "acme-west", "name": "Acme Property Group West", "status": "active", "aliases": ["Acme", "Acme Property Group"]},
+    {"tenant": "northstar_property", "id": "meridian", "name": "Meridian Property Services", "status": "active", "aliases": ["Meridian"]},
+    {"tenant": "bluewater_services", "id": "acme", "name": "Acme Services LLC", "status": "active", "aliases": ["Acme"]}
+  ],
+  "documents": [
+    {"tenant": "northstar_property", "id": "D-ACME", "title": "Acme agreement", "kind": "contract", "text": "Payment is due 30 calendar days after the invoice issue date."},
+    {"tenant": "northstar_property", "id": "D-ACME-SIGNED", "title": "Acme signed amendment", "kind": "amendment", "text": "For invoices issued from August 1 through September 30, 2026, payment is due 45 calendar days after issuance."},
+    {"tenant": "northstar_property", "id": "D-ACME-DRAFT", "title": "Acme draft amendment", "kind": "amendment", "text": "Draft proposal. Payment would be due 75 calendar days after issuance."},
+    {"tenant": "northstar_property", "id": "D-DECOY", "title": "Acme auxiliary services agreement", "kind": "contract", "text": "Payment is due 12 calendar days after the invoice issue date."},
+    {"tenant": "northstar_property", "id": "D-MERIDIAN", "title": "Meridian agreement", "kind": "contract", "text": "Payment is due 30 calendar days after the invoice issue date."},
+    {"tenant": "northstar_property", "id": "D-MERIDIAN-A", "title": "Meridian amendment A", "kind": "amendment", "text": "Payment is due 40 calendar days after the invoice issue date."},
+    {"tenant": "northstar_property", "id": "D-MERIDIAN-B", "title": "Meridian amendment B", "kind": "amendment", "text": "Payment is due 60 calendar days after the invoice issue date."},
+    {"tenant": "bluewater_services", "id": "D-ACME", "title": "Acme Services agreement", "kind": "contract", "text": "Payment is due 20 calendar days after the invoice issue date."}
+  ],
+  "contracts": [
+    {"tenant": "northstar_property", "id": "C-202", "customer": "acme", "status": "signed", "signed_at": "2026-01-02T17:00:00.000000+00:00", "issue_from": "2026-01-02", "issue_to": null, "document": "D-ACME"},
+    {"tenant": "northstar_property", "id": "C-201", "customer": "acme", "status": "signed", "signed_at": "2026-01-02T17:00:00.000000+00:00", "issue_from": "2026-01-02", "issue_to": null, "document": "D-DECOY"},
+    {"tenant": "northstar_property", "id": "C-301", "customer": "meridian", "status": "signed", "signed_at": "2026-01-02T17:00:00.000000+00:00", "issue_from": "2026-01-02", "issue_to": null, "document": "D-MERIDIAN"},
+    {"tenant": "northstar_property", "id": "C-302", "customer": "meridian", "status": "signed", "signed_at": "2026-01-02T17:00:00.000000+00:00", "issue_from": "2026-01-02", "issue_to": null, "document": null},
+    {"tenant": "bluewater_services", "id": "C-202", "customer": "acme", "status": "signed", "signed_at": "2026-01-02T17:00:00.000000+00:00", "issue_from": "2026-01-02", "issue_to": null, "document": "D-ACME"}
+  ],
+  "clauses": [
+    {"tenant": "northstar_property", "contract": "C-202", "net_days": 30, "document": "D-ACME"},
+    {"tenant": "northstar_property", "contract": "C-201", "net_days": 12, "document": "D-DECOY"},
+    {"tenant": "northstar_property", "contract": "C-301", "net_days": 30, "document": "D-MERIDIAN"},
+    {"tenant": "northstar_property", "contract": "C-302", "net_days": 30, "document": null},
+    {"tenant": "bluewater_services", "contract": "C-202", "net_days": 20, "document": "D-ACME"}
+  ],
+  "amendments": [
+    {"tenant": "northstar_property", "contract": "C-202", "id": "A-1", "status": "signed", "signed_at": "2026-07-28T15:00:00.000000+00:00", "activation_on": "2026-08-01", "issue_from": null, "issue_to": "2026-10-01", "priority": 10, "net_days": 45, "document": "D-ACME-SIGNED"},
+    {"tenant": "northstar_property", "contract": "C-202", "id": "A-2", "status": "draft", "signed_at": null, "activation_on": "2026-08-01", "issue_from": null, "issue_to": null, "priority": 20, "net_days": 75, "document": "D-ACME-DRAFT"},
+    {"tenant": "northstar_property", "contract": "C-301", "id": "A-1", "status": "signed", "signed_at": "2026-07-28T15:00:00.000000+00:00", "activation_on": "2026-08-01", "issue_from": null, "issue_to": null, "priority": 10, "net_days": 40, "document": "D-MERIDIAN-A"},
+    {"tenant": "northstar_property", "contract": "C-301", "id": "A-2", "status": "signed", "signed_at": "2026-07-29T15:00:00.000000+00:00", "activation_on": "2026-08-01", "issue_from": null, "issue_to": null, "priority": 10, "net_days": 60, "document": "D-MERIDIAN-B"}
+  ],
+  "invoices": [
+    {"tenant": "northstar_property", "id": "INV-104", "customer": "acme", "contract": "C-202", "issued_at": "2026-08-17T15:00:00.000000+00:00", "due": "2026-09-16", "total": 1200000},
+    {"tenant": "northstar_property", "id": "INV-105", "customer": "acme", "contract": "C-202", "issued_at": "2026-08-12T15:00:00.000000+00:00", "due": "2026-09-11", "total": 180000},
+    {"tenant": "northstar_property", "id": "INV-106", "customer": "acme", "contract": "C-202", "issued_at": "2026-08-15T15:00:00.000000+00:00", "due": "2026-09-14", "total": 240000},
+    {"tenant": "northstar_property", "id": "INV-107", "customer": "acme", "contract": "C-202", "issued_at": "2026-08-19T15:00:00.000000+00:00", "due": "2026-09-18", "total": 60000},
+    {"tenant": "northstar_property", "id": "INV-M01", "customer": "meridian", "contract": "C-301", "issued_at": "2026-08-17T15:00:00.000000+00:00", "due": "2026-09-16", "total": 52700},
+    {"tenant": "northstar_property", "id": "INV-M02", "customer": "meridian", "contract": "C-302", "issued_at": "2026-08-17T15:00:00.000000+00:00", "due": "2026-09-16", "total": 85300},
+    {"tenant": "bluewater_services", "id": "INV-104", "customer": "acme", "contract": "C-202", "issued_at": "2026-08-17T15:00:00.000000+00:00", "due": "2026-09-06", "total": 12400},
+    {"tenant": "bluewater_services", "id": "INV-B01", "customer": "acme", "contract": "C-202", "issued_at": "2026-08-17T15:00:00.000000+00:00", "due": "2026-09-06", "total": 67000}
+  ],
+  "payments": [
+    {"tenant": "northstar_property", "id": "PMT-1", "invoice": "INV-104", "status": "posted", "amount": 200000, "posted_at": "2026-09-02T15:00:00.000000+00:00"},
+    {"tenant": "northstar_property", "id": "PMT-2", "invoice": "INV-104", "status": "pending", "amount": 100000, "posted_at": null},
+    {"tenant": "northstar_property", "id": "PMT-3", "invoice": "INV-107", "status": "posted", "amount": 60000, "posted_at": "2026-09-02T15:00:00.000000+00:00"}
+  ],
+  "disputes": [
+    {"tenant": "northstar_property", "id": "DSP-1", "invoice": "INV-105", "opened_at": "2026-09-05T15:00:00.000000+00:00", "reason": "Customer disputes the service quantity"}
+  ],
+  "tickets": [
+    {"tenant": "northstar_property", "id": "TCK-901", "invoice": "INV-106", "policy_id": "standard", "version": 1, "actor": "analyst", "created_at": "2026-11-09T16:00:00.000000+00:00"}
+  ]
+}
