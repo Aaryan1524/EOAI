@@ -1,5 +1,7 @@
 import sqlite3
+from contextlib import closing
 from datetime import datetime, timedelta
+from pathlib import Path
 
 import pytest
 
@@ -17,6 +19,7 @@ from enterprise_ops.storage.repository import (
     transition_invoice,
     transition_payment,
 )
+from enterprise_ops.storage.sqlite import connect, initialize
 
 
 NORTH = Principal("northstar_property", "analyst")
@@ -28,9 +31,25 @@ def _revision(db, principal=NORTH):
     return db.execute("SELECT revision FROM tenants WHERE id = ?", (principal.tenant_id,)).fetchone()[0]
 
 
+def test_migration_preserves_existing_domain_state(tmp_path):
+    original = Path(__file__).parents[1] / "src/enterprise_ops/storage/migrations/0001_initial.sql"
+    with closing(connect(tmp_path / "existing.sqlite")) as db:
+        db.executescript(original.read_text(encoding="utf-8"))
+        clock = seed_baseline(db)
+        assert db.execute("PRAGMA user_version").fetchone()[0] == 1
+        before = assess_invoice(db, NORTH, "INV-104", clock)
+        initialize(db)
+        initialize(db)
+        assert db.execute("PRAGMA user_version").fetchone()[0] == 2
+        assert assess_invoice(db, NORTH, "INV-104", clock) == before
+        assert db.execute("SELECT policy_version FROM escalation_tickets WHERE id = 'TCK-901'").fetchone()[0] == 1
+        assert db.execute("SELECT count(*) FROM audit_events").fetchone()[0] == 0
+        assert not db.execute("PRAGMA foreign_key_check").fetchall()
+
+
 def test_seed_integrity_and_no_cross_tenant_id_leak(baseline):
     db, clock = baseline
-    assert db.execute("PRAGMA user_version").fetchone()[0] == 1
+    assert db.execute("PRAGMA user_version").fetchone()[0] == 2
     assert not db.execute("PRAGMA foreign_key_check").fetchall()
     with pytest.raises(ValueError, match="empty database"):
         seed_baseline(db)
