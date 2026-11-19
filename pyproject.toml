@@ -13,7 +13,7 @@ dependencies = ["pydantic>=2.10,<3"]
 test = ["pytest>=8.4,<10"]
 
 [tool.setuptools.package-data]
-enterprise_ops = ["storage/migrations/*.sql", "fixtures/scenarios/*.json"]
+enterprise_ops = ["storage/migrations/*.sql", "fixtures/scenarios/*.json", "agent/harnesses/*/AGENT.md"]
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]
