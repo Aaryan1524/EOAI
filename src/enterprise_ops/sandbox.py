@@ -14,7 +14,7 @@ from threading import Condition, Lock
 from uuid import uuid4
 
 from enterprise_ops.clock import FrozenClock
-from enterprise_ops.fixtures.seed import seed_baseline
+from enterprise_ops.fixtures.seed import seed_scenario
 from enterprise_ops.storage.sqlite import connect, initialize
 
 
@@ -93,7 +93,7 @@ class RunSandbox:
                     lifecycle.condition.notify_all()
 
     def reset(self) -> "RunSandbox":
-        """Restore the baseline under a new identity and retire this session.
+        """Restore the source snapshot under a new identity and retire this session.
 
         Call from outside a managed operation so admitted operations can finish.
         Raw SQLite connections still refer to this session's database.
@@ -118,8 +118,9 @@ def seed_snapshot(
     snapshot_id: str,
     *,
     profile: str = "enterprise_ops:v1",
+    scenario: str = "baseline",
 ) -> Snapshot:
-    """Create and publish a closed baseline database without overwriting a snapshot."""
+    """Create and publish a closed fixture database without overwriting a snapshot."""
     _check_component(snapshot_id, "snapshot_id")
     if not isinstance(profile, str) or not profile.strip():
         raise ValueError("profile must be a nonempty string")
@@ -129,7 +130,7 @@ def seed_snapshot(
         staged = Path(staging) / "snapshot.sqlite3"
         with closing(connect(staged)) as connection:
             initialize(connection)
-            clock = seed_baseline(connection)
+            clock = seed_scenario(connection, scenario)
         digest = _digest(staged)
         staged.chmod(0o600)
         os.link(staged, path)

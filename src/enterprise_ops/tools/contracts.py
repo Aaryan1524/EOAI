@@ -15,8 +15,10 @@ class StrictModel(BaseModel):
 
 Id = Annotated[str, Field(min_length=1, max_length=128)]
 Cursor = Annotated[str, Field(min_length=1, max_length=2048)]
+PageSize = Annotated[int, Field(ge=1, le=25)]
 Revision = Annotated[int, Field(ge=0)]
 Version = Annotated[int, Field(ge=1)]
+SchemaVersion = Literal["v1", "v2"]
 ErrorCode = Literal[
     "NOT_FOUND", "PERMISSION_DENIED", "VALIDATION_ERROR", "SCHEMA_MISMATCH",
     "RATE_LIMITED", "TRANSIENT_FAILURE", "CONFLICT", "PRECONDITION_FAILED",
@@ -25,7 +27,7 @@ ErrorCode = Literal[
 
 
 class PageArgs(StrictModel):
-    limit: Annotated[int, Field(ge=1, le=25)] = 10
+    limit: PageSize = 10
     cursor: Cursor | None = None
 
 
@@ -61,7 +63,7 @@ class ToolFailure(Exception):
 
 class ToolMeta(StrictModel):
     tool_name: str
-    schema_version: Literal["v1"] = "v1"
+    schema_version: SchemaVersion = "v1"
     profile: str
     sandbox_id: Id
     state_revision: Revision | None

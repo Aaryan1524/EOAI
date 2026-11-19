@@ -3,6 +3,7 @@
 import sqlite3
 from collections.abc import Callable, Iterator
 from contextlib import closing, contextmanager
+from enum import Enum, auto
 from math import inf
 from time import monotonic
 from typing import Any
@@ -19,12 +20,17 @@ from enterprise_ops.tools.actions import ACTION_TOOLS, PreviewResult, Receipt
 from enterprise_ops.tools.contracts import (
     Page, PageArgs, StrictModel, ToolDefinition, ToolError, ToolFailure, ToolMeta, ToolResponse,
 )
+from enterprise_ops.tools.profiles import TOOL_PROFILE as TOOL_PROFILE
+from enterprise_ops.tools.profiles import TOOL_PROFILES
 from enterprise_ops.tools.reads import READ_TOOLS
 from enterprise_ops.tools.session import Observation, Session, ToolCall, WriteScope
 
 
-TOOL_PROFILE = "enterprise_ops:v1"
 TOOLS = READ_TOOLS | ACTION_TOOLS
+
+
+class _UseSchemaVersion(Enum):
+    CURRENT = auto()
 
 
 class ToolGateway:
@@ -37,10 +43,12 @@ class ToolGateway:
         faults: FaultPlan | None = None,
         elapsed: Callable[[], float] = monotonic,
     ) -> None:
-        if sandbox.profile != TOOL_PROFILE:
+        profile = TOOL_PROFILES.get(sandbox.profile)
+        if profile is None:
             raise ValueError("Unsupported tool profile")
         if write_scope is not None and write_scope.principal != principal:
             raise ValueError("Write scope belongs to a different principal")
+        self._profile = profile
         self._session = Session(sandbox, principal, write_scope, elapsed)
         self._faults = faults.fresh() if faults is not None else FaultPlan()
 
@@ -48,12 +56,19 @@ class ToolGateway:
         return [
             {
                 "name": name,
-                "schema_version": "v1",
-                "arguments": definition.arguments.model_json_schema(),
+                "schema_version": self._profile.schema_version,
+                "arguments": self._argument_model(name, definition).model_json_schema(),
                 "result": definition.result.model_json_schema(),
             }
             for name, definition in TOOLS.items()
         ]
+
+    def canonical_arguments(self, name: str, arguments: dict[str, Any]) -> dict[str, Any]:
+        """Validate the active profile's arguments and dump the canonical v1 fields."""
+        return self._argument_model(name, TOOLS[name]).model_validate(arguments).model_dump()
+
+    def _argument_model(self, name: str, definition: ToolDefinition) -> type[StrictModel]:
+        return self._profile.argument_overrides.get(name, definition.arguments)
 
     def observation(self, evidence_id: str) -> Observation | None:
         if not self._session.sandbox.active:
@@ -65,7 +80,7 @@ class ToolGateway:
         name: str,
         arguments: dict[str, Any],
         *,
-        schema_version: str = "v1",
+        schema_version: str | _UseSchemaVersion = _UseSchemaVersion.CURRENT,
         timeout: float | None = None,
     ) -> ToolResponse:
         """Invoke a declared tool with an optional elapsed-time budget in seconds."""
@@ -86,10 +101,12 @@ class ToolGateway:
                 _remaining(deadline)
             if not sandbox.active:
                 raise ToolFailure("PRECONDITION_FAILED", "Sandbox session is retired")
-            if definition is None or schema_version != "v1":
+            if definition is None or schema_version not in (
+                _UseSchemaVersion.CURRENT, self._profile.schema_version,
+            ):
                 raise ToolFailure("SCHEMA_MISMATCH", "Tool or schema version is not declared")
             try:
-                args = definition.arguments.model_validate(arguments)
+                args = self._argument_model(name, definition).model_validate(arguments)
             except ValidationError as error:
                 raise ToolFailure("VALIDATION_ERROR", "Arguments do not match the tool schema") from error
             with sandbox.operation():
@@ -156,7 +173,8 @@ class ToolGateway:
     def _meta(self, tool: str, call_id: str, revision: int | None, evidence: list[str]) -> ToolMeta:
         sandbox = self._session.sandbox
         return ToolMeta(
-            tool_name=tool, profile=sandbox.profile, sandbox_id=sandbox.id, state_revision=revision,
+            tool_name=tool, schema_version=self._profile.schema_version, profile=sandbox.profile,
+            sandbox_id=sandbox.id, state_revision=revision,
             observed_at=stamp(sandbox.clock.instant), call_id=call_id, evidence_ids=evidence,
         )
 
