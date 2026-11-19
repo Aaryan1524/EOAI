@@ -1,4 +1,4 @@
-"""Load the small, deterministic development scenario."""
+"""Load deterministic sandbox scenarios."""
 
 import json
 import sqlite3
@@ -11,9 +11,27 @@ from enterprise_ops.clock import FrozenClock
 from enterprise_ops.storage.sqlite import transaction
 
 
+_SCENARIOS = {
+    "baseline": ("baseline",),
+    "acme-paged-v2": ("baseline", "acme-paged-v2"),
+    "compound-escalation": ("compound-escalation",),
+}
+
+
 def seed_baseline(connection: sqlite3.Connection) -> FrozenClock:
-    scenario = Path(__file__).with_name("scenarios") / "baseline.json"
-    fixture = json.loads(scenario.read_text(encoding="utf-8"))
+    return seed_scenario(connection, "baseline")
+
+
+def seed_scenario(connection: sqlite3.Connection, scenario: str) -> FrozenClock:
+    """Load a named fixture into an empty database."""
+    if scenario not in _SCENARIOS:
+        raise ValueError(f"Unknown fixture scenario: {scenario!r}")
+    directory = Path(__file__).with_name("scenarios")
+    base, *extensions = _SCENARIOS[scenario]
+    fixture = json.loads((directory / f"{base}.json").read_text(encoding="utf-8"))
+    for extension in extensions:
+        additions = json.loads((directory / f"{extension}.json").read_text(encoding="utf-8"))
+        fixture["invoices"].extend(additions["invoices"])
     clock = FrozenClock(datetime.fromisoformat(fixture["simulation_time"]))
     with transaction(connection, write=True):
         if connection.execute("SELECT 1 FROM tenants LIMIT 1").fetchone():
@@ -59,7 +77,7 @@ def seed_baseline(connection: sqlite3.Connection) -> FrozenClock:
             ),
         )
         for document in fixture["documents"]:
-            _insert_document(connection, document)
+            _insert_document(connection, base, document)
         connection.executemany(
             "INSERT INTO contracts (tenant_id, id, customer_id, status, signed_at, issue_from, issue_to, "
             "source_document_id, source_document_version) "
@@ -120,7 +138,7 @@ def seed_baseline(connection: sqlite3.Connection) -> FrozenClock:
     return clock
 
 
-def _insert_document(connection: sqlite3.Connection, document: dict[str, str]) -> None:
+def _insert_document(connection: sqlite3.Connection, scenario: str, document: dict[str, str]) -> None:
     tenant = document["tenant"]
     identifier = document["id"]
     text = document["text"]
@@ -130,7 +148,7 @@ def _insert_document(connection: sqlite3.Connection, document: dict[str, str]) -
         "VALUES (?, ?, 1, ?, ?, ?, ?, ?)",
         (
             tenant, identifier, document["title"], document["kind"],
-            f"fixture://baseline/{tenant}/{identifier}", text, sha256(text.encode("utf-8")).hexdigest(),
+            f"fixture://{scenario}/{tenant}/{identifier}", text, sha256(text.encode("utf-8")).hexdigest(),
         ),
     )
     connection.execute(

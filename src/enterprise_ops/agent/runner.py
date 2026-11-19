@@ -167,7 +167,8 @@ class _Run:
             arguments={key: value for key, value in (args or {}).items() if key in fields},
             response=response.model_dump(mode="json"),
         )
-        self.ledger.record(name, args or {}, response)
+        recorded_args = self.gateway.canonical_arguments(name, args) if response.ok else args
+        self.ledger.record(name, recorded_args, response)
         if not response.ok:
             self.error(response.error.code, tool=trace_name, call_id=response.meta.call_id)
         return response
