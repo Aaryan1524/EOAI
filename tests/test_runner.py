@@ -4,6 +4,7 @@ from dataclasses import replace
 
 import pytest
 
+from enterprise_ops.agent.handles import ToolHandles
 from enterprise_ops.agent.model import ModelError, ModelTurn, ToolCall
 from enterprise_ops.agent.runner import RunLimits, RunTask, run_task
 from enterprise_ops.domain.entities import Capability, Principal
@@ -314,3 +315,17 @@ def test_duplicate_confirmation_keys_cannot_commit_a_preview(tmp_path):
     ])
     assert result.output.status == "partial"
     assert json.loads((result.trace_path / "state_delta.json").read_text()) == []
+
+
+def test_model_handles_round_trip_only_within_their_kind_and_run():
+    handles = ToolHandles()
+    observed = handles.for_model({
+        "meta": {"evidence_ids": ["ev_record"]},
+        "data": {"next_cursor": "opaque-cursor", "preview_token": "opaque-preview"},
+    })
+    evidence = observed["meta"]["evidence_ids"][0]
+    cursor, preview = observed["data"]["next_cursor"], observed["data"]["preview_token"]
+    assert handles.for_gateway({
+        "evidence_ids": [evidence, preview], "page_cursor": cursor, "preview_token": preview,
+    }) == {"evidence_ids": ["ev_record", preview], "page_cursor": "opaque-cursor", "preview_token": "opaque-preview"}
+    assert ToolHandles().for_gateway({"preview_token": preview}) == {"preview_token": preview}

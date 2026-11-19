@@ -9,6 +9,7 @@ from typing import Literal
 
 from pydantic import TypeAdapter, ValidationError
 
+from enterprise_ops.agent.handles import ToolHandles
 from enterprise_ops.agent.harness import Harness, load_harness
 from enterprise_ops.agent.model import Model, ModelError
 from enterprise_ops.agent.output import Ledger, RunOutput
@@ -145,6 +146,7 @@ class _Run:
         self.corrections = 0
         self.invalid_calls: set[str] = set()
         self.write_stop: str | None = None
+        self.handles = ToolHandles()
 
     @property
     def remaining(self) -> float:
@@ -191,6 +193,7 @@ class _Run:
         raise AssertionError("Bounded tool retry must produce a response")
 
     def act(self, name: str, args: dict | None) -> ToolResponse:
+        args = self.handles.for_gateway(args)
         response, uncertain = self.call_tool(name, args)
         if name == "ticket.preview_create" and response.ok and response.data.preview_token is not None:
             preview = response.data
@@ -283,7 +286,7 @@ class _Run:
                         return None, self.write_stop
                     transcript.append({"role": "user", "content": canonical({
                         "runtime_feedback": "The chosen tool returned this result. Finish the original task.",
-                        "result": response.model_dump(mode="json"),
+                        "result": self.handles.for_model(response.model_dump(mode="json")),
                     })})
                     continue
                 try:
@@ -311,7 +314,7 @@ class _Run:
                             ),
                             "pending_tool": tool,
                             "provider_tool_name": tool.replace(".", "_"),
-                            "arguments": recommended,
+                            "arguments": self.handles.for_model(recommended),
                         })})
                         self.trace.event("action_followup", tool=tool, invoice_id=self.previews[pending])
                         offered_followup = True
@@ -341,7 +344,7 @@ class _Run:
                 },
                 {
                     "type": "function_call_output", "call_id": call.id, "name": call.name,
-                    "output": response.model_dump_json(),
+                    "output": canonical(self.handles.for_model(response.model_dump(mode="json"))),
                 },
             ))
             if not response.ok and response.error.code in {"VALIDATION_ERROR", "SCHEMA_MISMATCH"}:
