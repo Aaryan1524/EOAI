@@ -88,8 +88,13 @@ def test_partial_filtered_and_restarted_pages_do_not_claim_full_coverage(sandbox
     gateway = ToolGateway(sandbox, PRINCIPAL)
     ledger = Ledger("review_invoices", customer_id=ACCOUNT)
     invoke(ledger, gateway, "invoice.search", customer_id=ACCOUNT, statuses=["issued"])
-    assert not finish(ledger, gateway).coverage.invoice_search_exhausted
+    invoke(ledger, gateway, "invoice.assess", invoice_id="INV-104")
+    partial = finish(ledger, gateway)
+    assert not partial.coverage.invoice_search_exhausted
+    assert "INV-104" in partial.coverage.observed_invoice_ids
+    assert partial.decisions[0].invoice_id == "INV-104"
 
+    ledger = Ledger("review_invoices", customer_id=ACCOUNT)
     first = invoke(ledger, gateway, "invoice.search", customer_id=ACCOUNT, limit=2)
     invoke(ledger, gateway, "invoice.search", customer_id=ACCOUNT, limit=3, cursor=first.next_cursor, ok=False)
     result = finish(ledger, gateway, review_reason="untrusted narrative")

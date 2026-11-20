@@ -17,7 +17,7 @@ from enterprise_ops.agent.output import Ledger, RunOutput
 from enterprise_ops.agent.trace import RunTrace
 from enterprise_ops.domain.entities import Capability, Principal
 from enterprise_ops.sandbox import FaultPlan, RunSandbox, Snapshot
-from enterprise_ops.storage.audit import canonical, stamp
+from enterprise_ops.storage.audit import canonical
 from enterprise_ops.storage.repository import authorize
 from enterprise_ops.storage.sqlite import connect
 from enterprise_ops.tools.contracts import Id, StrictModel, ToolResponse
@@ -128,7 +128,7 @@ _WRITES = {
 class _Run:
     def __init__(
         self, gateway: ToolGateway, model: Model, task: RunTask, harness: Harness,
-        limits: RunLimits, trace: RunTrace,
+        limits: RunLimits, trace: RunTrace, run_id: str, business_date: str,
     ) -> None:
         self.gateway = gateway
         self.model = model
@@ -136,6 +136,8 @@ class _Run:
         self.harness = harness
         self.limits = limits
         self.trace = trace
+        self.run_id = run_id
+        self.business_date = business_date
         self.declarations = gateway.declarations()
         self._fields = {
             tool["name"]: frozenset(tool["arguments"].get("properties", {})) for tool in self.declarations
@@ -243,12 +245,56 @@ class _Run:
         self.trace.event("model_correction", code=code, **fields)
         return True
 
+    def output(self, choice: FinalChoice | None, stop: str) -> RunOutput:
+        return self.ledger.finish(
+            run_id=self.run_id, task_id=self.task.id, as_of=self.trace.as_of,
+            business_date=self.business_date, lookup=self.gateway.observation,
+            selected_customer_id=choice.customer_id if choice else None,
+            review_reason=choice.review_reason if choice else None, stop_reason=stop,
+        )
+
+    def completion_feedback(self, transcript: list[dict], choice: FinalChoice) -> bool:
+        result = self.output(choice, "model_final")
+        missing = {item.code for item in result.missing_information}
+        if "CUSTOMER_SEARCH_INCOMPLETE" in missing:
+            message = (
+                "Finish the original customer search. Copy the latest continuation "
+                "and keep the same query and page size."
+            )
+        elif "INVOICE_SEARCH_INCOMPLETE" in missing:
+            message = (
+                "Finish the invoice search. For the full account, omit status filters "
+                "and follow each continuation with the same search fields and page size."
+            )
+        elif "ASSESSMENT_MISSING" in missing:
+            message = "Assess the remaining in-scope invoices before finishing."
+        elif (
+            self.task.write_scope
+            and Capability.CREATE_TICKET in self.task.write_scope.capabilities
+            and "ACTION_NOT_ATTEMPTED" in missing
+            and self.tool_calls + 2 <= self.limits.tool_calls
+        ):
+            remaining = [
+                action.invoice_id for action in result.actions
+                if action.type == "create_escalation_ticket" and action.status == "not_attempted"
+            ]
+            return bool(remaining) and self.feedback(
+                transcript, "ESCALATION_INCOMPLETE",
+                "Eligible invoices still need an action. Check for an active ticket or preview "
+                "creation using the current assessment evidence. Submit a ready preview if appropriate.",
+                invoice_ids=", ".join(remaining),
+            )
+        else:
+            return False
+        return self.feedback(transcript, "COVERAGE_INCOMPLETE", message)
+
     def execute(self) -> tuple[FinalChoice | None, str]:
         transcript = [{"role": "user", "content": canonical({
             "request": self.task.request, **self.task.public_context(),
         })}]
         seen_calls: set[str] = set()
         offered_followup = False
+        checked_completion = False
         offered_token: str | None = None
         for _ in range(self.limits.model_turns):
             if self.remaining <= 0:
@@ -328,6 +374,13 @@ class _Run:
                         offered_followup = True
                         offered_token = pending
                         continue
+                if (
+                    self.harness.version == "v3" and choice.review_reason is None
+                    and not checked_completion and self.tool_calls < self.limits.tool_calls
+                    and self.completion_feedback(transcript, choice)
+                ):
+                    checked_completion = True
+                    continue
                 self.trace.event("model_final", choice=choice.model_dump())
                 return choice, "model_final"
             if len(turn.calls) != 1 or turn.final is not None or turn.calls[0].id in seen_calls:
@@ -357,9 +410,15 @@ class _Run:
             ))
             if not response.ok and response.error.code in {"VALIDATION_ERROR", "SCHEMA_MISMATCH"}:
                 invalid = digest(json.dumps([call.name, args], sort_keys=True))
+                message = "Use a declared tool name and its exact argument schema. Correct the rejected call once."
+                if self.harness.version == "v3" and response.error.message == "Invalid pagination cursor":
+                    message = (
+                        "Copy the latest continuation from this same search. Repeat its original "
+                        "arguments exactly, including page size and any filters. If needed, restart without a cursor."
+                    )
                 if invalid in self.invalid_calls or not self.feedback(
                     transcript, response.error.code,
-                    "Use a declared tool name and its exact argument schema. Correct the rejected call once.",
+                    message,
                     tool=call.name if call.name in self._fields else "unknown",
                 ):
                     return None, "invalid_tool"
@@ -454,7 +513,10 @@ def run_task(
         timezone = db.execute("SELECT timezone FROM tenants WHERE id = ?", (task.principal.tenant_id,)).fetchone()[0]
     gateway = ToolGateway(sandbox, task.principal, write_scope=task.write_scope, faults=faults)
     trace = RunTrace(runs_root / "traces", sandbox)
-    run = _Run(gateway, model, task, harness, limits, trace)
+    run = _Run(
+        gateway, model, task, harness, limits, trace, run_id,
+        sandbox.clock.business_date(timezone).isoformat(),
+    )
     trace.write("manifest", {
         "manifest_version": 1, "run_id": run_id, "task_id": task.id, "sandbox_id": sandbox.id,
         "scenario": scenario, "task_digest": task_digest(task),
@@ -472,12 +534,7 @@ def run_task(
         "user_id": task.principal.user_id, "rendered_instructions": harness.instructions,
     })
     choice, stop = run.execute()
-    output = run.ledger.finish(
-        run_id=run_id, task_id=task.id, as_of=stamp(sandbox.clock.instant),
-        business_date=sandbox.clock.business_date(timezone).isoformat(), lookup=gateway.observation,
-        selected_customer_id=choice.customer_id if choice else None,
-        review_reason=choice.review_reason if choice else None, stop_reason=stop,
-    )
+    output = run.output(choice, stop)
     final = output.model_dump(mode="json")
     trace.write("final_output", final)
     trace.write("evidence", final["evidence"])

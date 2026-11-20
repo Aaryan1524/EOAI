@@ -78,6 +78,23 @@ def _run(path, task, steps, **kwargs):
         snapshot, task, ScriptModel(steps), runs_root=path / "runs", run_id="smoke", **kwargs,
     )
 
+def test_v3_reminds_model_about_eligible_invoice_left_unhandled(tmp_path):
+    def assess_remaining(context):
+        assert context["invoice_ids"] == "INV-104"
+        return {"invoice_id": "INV-104"}
+
+    result = _run(tmp_path, _assignment(), [
+        ("invoice.get", {"invoice_id": "INV-104"}),
+        ("invoice.assess", {"invoice_id": "INV-104"}),
+        '{"customer_id":"acme","review_reason":null}',
+        ("invoice.assess", assess_remaining),
+        ("ticket.preview_create", _preview),
+        ("ticket.create", _commit),
+        '{"customer_id":"acme","review_reason":null}',
+    ], harness=load_harness("v3"))
+    assert result.output.status == "resolved"
+    assert result.output.actions[0].confirmed_by_readback
+
 
 def test_run_verifies_ticket_before_claiming_completion(tmp_path):
     result = _run(tmp_path, _assignment(), [

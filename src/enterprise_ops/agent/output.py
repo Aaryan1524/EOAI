@@ -375,6 +375,12 @@ class Ledger:
                     if isinstance(row, InvoiceResult) and row.customer_id == customer_id
                 )
         if not exhausted or self.invoice_ids is not None:
+            for page in calls:
+                if page.args.statuses is not None and evidence.query(page, customer_id):
+                    observed.update(
+                        row.id for row in page.data.items
+                        if isinstance(row, InvoiceResult) and row.customer_id == customer_id
+                    )
             for call in current:
                 if (
                     isinstance(call.data, InvoiceResult) and call.name == "invoice.get"

@@ -106,7 +106,8 @@ def local_provider(monkeypatch):
 def test_catalog_seed_run_inspect_and_reset(tmp_path, capsys, local_provider):
     catalog = _invoke(tmp_path, capsys, "tasks")
     assert [entry["name"] for entry in catalog] == [
-        "acme-list", "acme-escalation", "meridian-conflict", "acme-paged-v2", "compound-escalation",
+        "acme-list", "acme-escalation", "meridian-conflict", "acme-account-escalation",
+        "acme-paged-v2", "compound-escalation",
     ]
 
     metadata = _invoke(tmp_path, capsys, "seed", "base")
