@@ -7,6 +7,7 @@ import sqlite3
 import subprocess
 import sys
 from pathlib import Path
+from tempfile import TemporaryDirectory
 
 from enterprise_ops.agent.model import ModelError, OllamaModel, strict_json
 from enterprise_ops.agent.runner import RunLimits
@@ -17,6 +18,7 @@ from .execution import (
     TrialConfig, fixed_conditions, load_variant, run_trial, runtime_identity, source_identity,
     verify_trial_artifacts,
 )
+from .isolation import isolated_trial, verify_roles
 from .scoring import score
 
 
@@ -59,6 +61,14 @@ def _evaluate(args: argparse.Namespace) -> None:
     }
     model = OllamaModel(args.model, args.endpoint)
     runtime = runtime_identity(model)
+    isolation = None
+    invoke_trial = run_trial
+    if args.split == "heldout":
+        with TemporaryDirectory(prefix="eoai-credentials-") as directory:
+            canary = Path(directory) / "credential"
+            canary.write_text("disposable access canary", encoding="utf-8")
+            isolation = verify_roles(args.suite.resolve().parent, args.suite.resolve(), canary)
+        invoke_trial = isolated_trial
     args.out.mkdir(mode=0o700)
     reports = []
     for case_index, case in enumerate(cases, start=1):
@@ -79,7 +89,7 @@ def _evaluate(args: argparse.Namespace) -> None:
                 raise ValueError("The runtime changed before the next arm")
             trials = []
             for trial_number in range(1, args.trials + 1):
-                result = run_trial(
+                result = invoke_trial(
                     config, model, content, snapshot, case.task, case.faults,
                     run_id=f"case-{case_index}-{arm}-trial-{trial_number}", root=args.out,
                     scenario=case.scenario,
@@ -113,6 +123,7 @@ def _evaluate(args: argparse.Namespace) -> None:
         "source": source, "runtime": runtime, "harness_digests": {
             arm: content.digest for arm, content in arms.items()
         },
+        "isolation": isolation,
     })
 
 
