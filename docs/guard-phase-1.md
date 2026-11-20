@@ -1,5 +1,9 @@
 # GUARD Phase 1
 
+The [targeted audit remediation](guard-phase-1-remediation.md) supersedes the
+review and gate interpretation of the historical pilot below. Its source
+artifacts and original decision are preserved.
+
 This implementation follows the fixed-batch, execution-scored path in
 [GUARD arXiv v1](https://arxiv.org/html/2611.23476v1#S4). The solver runs the
 same `qwen3:4b-instruct`, tool profiles, policies, limits, and production
@@ -38,7 +42,7 @@ The following references use the numbering in [§4 and Appendix B](https://arxiv
 
 | Paper | Implementation |
 |---|---|
-| §4.1, Eq. 2 | Continuous score `S = 100 × passed / graded`. Ungraded criteria are omitted. Strict score is zero after a blocking error, 100 when all graded criteria pass, and `S / 2` otherwise. An invalid semantic verdict fails its binary criterion. |
+| §4.1, Eq. 2 | Continuous score `S = 100 × passed / graded`. Ungraded criteria are omitted. Strict score is zero after a blocking error, 100 when all graded criteria pass, and `S / 2` otherwise. An unresolved semantic verdict is ungraded after one retry. Such a pair supplies no promotion evidence. |
 | §4.2, Eqs. 3–4 | Obedience is the mean of a criterion's binary verdicts over graded replicates. Hurt is `max(0, previous_obedience − current_obedience)` when both are available. First-round or unmatched hurt is zero. Gap is `1 − incumbent_obedience`. Priority sums hurt and gap. A rejected winner or repair supplies the comparison for hurt, while gap stays anchored to the incumbent. |
 | §4.2, Eq. 5 | Select top and bottom rollout by strict score, then continuous score. Save a contrast for a positive strict delta or a continuous delta at least 10 points. |
 | §4.3, Eqs. 6–7 | Start with identical proposal prompts. Average replicates per task. Help and hurt require a continuous-score change strictly beyond +15 or −15 points. |
