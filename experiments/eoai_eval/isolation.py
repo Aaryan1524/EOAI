@@ -54,10 +54,11 @@ def role_command(role: str, area: Path, code: str, *, model_port: int | None = N
     profile = [
         "(version 1)", "(deny default)",
         "(allow file-read-data (literal \"/\"))",  # dyld startup
-        '(allow file-read-metadata (literal "/private") (literal "/private/tmp"))',  # SQLite path resolution
+        '(allow file-read-metadata (literal "/private") (literal "/private/tmp") (literal "/var"))',
         f"(allow process-exec {_literal(python)})",
         f"(allow file-read* {_subpath(base)} {_subpath(packages)} {_subpath(area)} "
-        '(subpath "/System/Library") (subpath "/usr/lib") (literal "/dev/urandom"))',
+        '(subpath "/System/Library") (subpath "/usr/lib") (literal "/dev/urandom") '
+        '(subpath "/private/var/db/timezone") (literal "/usr/share/zoneinfo"))',
         f"(allow file-write* {_subpath(area / 'scratch')})",
     ]
     if model_port is not None:
@@ -113,9 +114,22 @@ def inherited(fd):
 
 result['extra_descriptors'] = not any(inherited(fd) for fd in range(3, 32))
 result['direct_network'] = denied(lambda: socket.create_connection(('127.0.0.1', data['port']), 1))
-blocked = denied(lambda: socket.create_connection(('127.0.0.1', data['broker_port']), 1))
-result['model_broker_policy'] = blocked != data['solver']
-result['evaluator_spawn'] = denied(lambda: os.posix_spawn('/usr/bin/true', ['/usr/bin/true'], {}))
+def connect_broker():
+    with socket.create_connection(('127.0.0.1', data['broker_port']), 1):
+        pass
+
+if data['solver']:
+    connect_broker()
+    result['model_broker_policy'] = True
+else:
+    result['model_broker_policy'] = denied(connect_broker)
+result['unapproved_executable'] = denied(lambda: os.posix_spawn('/usr/bin/true', ['/usr/bin/true'], {}))
+try:
+    import experiments.eoai_eval.scoring
+except ImportError:
+    result['evaluator_import'] = True
+else:
+    result['evaluator_import'] = False
 result['public_input'] = open('public.txt', encoding='utf-8').read() == 'public'
 print(json.dumps(result))
 """
@@ -131,7 +145,10 @@ def verify_roles(vault: Path, answer_file: Path, credential_file: Path) -> dict:
         port = server.getsockname()[1]
         broker_port = broker.getsockname()[1]
         data = {
-            "files": {"private_answers": str(answer_file), "credential_file": str(credential_file)},
+            "files": {
+                "private_answers": str(answer_file), "credential_file": str(credential_file),
+                "evaluator_source": str(Path(__file__).with_name("scoring.py")),
+            },
             "private_directory": str(vault), "write_path": str(vault / ".role-write-probe"),
             "port": port, "broker_port": broker_port,
         }
@@ -156,6 +173,11 @@ def verify_roles(vault: Path, answer_file: Path, credential_file: Path) -> dict:
 @contextmanager
 def model_broker(model, deadline):
     """Offer only inference and model identity to the solver process."""
+    inventory_names = {model.model_id}
+    if model.model_id.endswith(":latest"):
+        inventory_names.add(model.model_id.removesuffix(":latest"))
+    elif ":" not in model.model_id.rsplit("/", 1)[-1]:
+        inventory_names.add(f"{model.model_id}:latest")
 
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, *_):
@@ -185,7 +207,7 @@ def model_broker(model, deadline):
                 if operation == ("GET", "/api/tags"):
                     data = {"models": [
                         row for row in data["models"]
-                        if row.get("name") == model.model_id or row.get("model") == model.model_id
+                        if inventory_names.intersection((row.get("name"), row.get("model")))
                     ]}
                 result = json.dumps(data).encode()
             except (AttributeError, KeyError, ValueError, TypeError, ModelError):

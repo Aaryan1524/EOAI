@@ -3,7 +3,7 @@ import subprocess
 
 import pytest
 
-from experiments.eoai_eval.isolation import ROLES, _copy_output, role_area, role_command, verify_roles
+from experiments.eoai_eval.isolation import ROLES, _copy_output, _invoke, role_area, role_command, verify_roles
 
 
 def test_each_native_role_is_denied_private_files_credentials_and_direct_network(tmp_path):
@@ -26,6 +26,15 @@ def test_each_native_role_is_denied_private_files_credentials_and_direct_network
     assert set(evidence) == set(ROLES)
     assert all(all(checks.values()) for checks in evidence.values())
     assert not (private / ".role-write-probe").exists()
+    with role_area() as area:
+        _invoke("solver", area, """
+import sqlite3
+from zoneinfo import ZoneInfo
+
+assert ZoneInfo("America/New_York").key == "America/New_York"
+with sqlite3.connect("scratch/run.sqlite3") as connection:
+    connection.execute("CREATE TABLE probe (id INTEGER)")
+""", {})
 
 
 def test_output_collection_rejects_symlinked_parent_and_hardlink(tmp_path):
