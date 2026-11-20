@@ -24,10 +24,9 @@ def _reviewer(role, purpose, instruction, payload, temperature):
         assert "expectations" not in json.dumps(payload)
         return {"selected": ["s1"]}
     assert purpose == "criterion"
-    assert set(payload) == {"request", "public_context", "tool_names", "criterion", "evidence"}
+    assert set(payload) == {"request", "public_context", "tool_names", "target", "evidence"}
     assert "rendered_instructions" not in json.dumps(payload)
-    return {"verdict": "PASS", "why": "The final coverage identifies the account.",
-            "evidence": [{"key": "output.coverage", "quote": "acme", "finding": "SUPPORTS"}]}
+    return {"verdict": "PASS", "citation": "output.coverage", "finding": "SUPPORTS"}
 
 
 def _prepare(tmp_path, task, scenario="baseline"):

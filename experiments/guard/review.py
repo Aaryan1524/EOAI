@@ -844,7 +844,7 @@ def _semantic(checklist: Checklist, criterion: Criterion, evidence: dict, comple
     grade = grade_criterion({
         "request": scrub(checklist.request), "public_context": scrub(checklist.public_context),
         "tool_names": [row["name"] for row in checklist.tool_declarations],
-        "criterion": {"id": criterion.id, "description": criterion.description}, "evidence": evidence,
+        "target": {"id": criterion.id, "description": criterion.description}, "evidence": evidence,
     }, complete)
     return CriterionResult(criterion.id, grade.passed, grade.why, grade.evidence, grade.attempts)
 

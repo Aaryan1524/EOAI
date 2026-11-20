@@ -12,27 +12,23 @@ _PAYLOAD = {
     "request": "List every Acme invoice.",
     "public_context": {},
     "tool_names": ["invoice.search"],
-    "criterion": {"id": "req_1", "description": "Identify the correct account."},
+    "target": {"id": "req_1", "description": "Identify the correct account."},
     "evidence": _EVIDENCE,
 }
-_CITATION = {"key": "output.coverage", "quote": "acme", "finding": "SUPPORTS"}
-_PASS = {"verdict": "PASS", "why": "Coverage lists Acme.\nThe account matches.", "evidence": [_CITATION]}
-_FAIL = {
-    "verdict": "FAIL", "why": "The final search result still had a next page.",
-    "evidence": [{"key": "trace.5", "quote": '"has_next_page":true', "finding": "CONTRADICTS"}],
-}
-_UNKNOWN = {"verdict": "UNKNOWN", "why": "The supplied evidence cannot establish the result.", "evidence": []}
+_PASS = {"verdict": "PASS", "citation": "output.coverage", "finding": "SUPPORTS"}
+_FAIL = {"verdict": "FAIL", "citation": "trace.5", "finding": "CONTRADICTS"}
+_UNKNOWN = {"verdict": "UNKNOWN", "citation": "NONE", "finding": "INDETERMINATE"}
 
 
 @pytest.mark.parametrize(("reply", "expected", "key", "criterion"), [
     (_PASS, True, "output.coverage", "Identify the correct account."),
     (_FAIL, False, "trace.5", "Exhaust all invoice pages."),
 ])
-def test_grounded_grade_allows_multiline_explanations_and_evidence_fragments(reply, expected, key, criterion):
-    payload = dict(_PAYLOAD, criterion={"id": "req_1", "description": criterion})
+def test_grounded_grade_resolves_the_reference_to_observed_evidence(reply, expected, key, criterion):
+    payload = dict(_PAYLOAD, target={"id": "req_1", "description": criterion})
     grade = grade_criterion(payload, lambda *_: reply)
     assert grade.passed is expected
-    assert grade.why == " ".join(reply["why"].split())
+    assert "Observed:" in grade.why and key in grade.why
     assert grade.evidence == (key,)
     attempt, = grade.attempts
     assert json.loads(attempt.raw_reply) == reply
@@ -43,13 +39,11 @@ def test_grounded_grade_allows_multiline_explanations_and_evidence_fragments(rep
     ("Yes", "Invalid semantic verdict fields"),
     ({"passed": True, "why": "Yes", "evidence": ["output.coverage"]}, "Invalid semantic verdict fields"),
     (dict(_PASS, verdict=True), "Invalid semantic verdict label"),
-    (dict(_PASS, why="YES"), "Semantic verdict has no evidence explanation"),
-    (dict(_PASS, evidence=[]), "Semantic verdict requires one to three citations"),
-    (dict(_PASS, evidence=[dict(_CITATION, finding="CONTRADICTS")]), "conflicts with verdict"),
-    (dict(_PASS, evidence=[_CITATION, *_FAIL["evidence"]]), "conflicts with verdict"),
-    (dict(_PASS, evidence=[_CITATION, _CITATION]), "Unknown or duplicate semantic evidence key"),
-    (dict(_PASS, evidence=[dict(_CITATION, key="output.missing")]), "Unknown or duplicate semantic evidence key"),
-    (dict(_PASS, evidence=[dict(_CITATION, quote="globex")]), "does not quote the cited evidence"),
+    (dict(_PASS, citation=None), "Unknown or empty semantic evidence key"),
+    (dict(_PASS, citation="output.missing"), "Unknown or empty semantic evidence key"),
+    (dict(_PASS, finding="CONTRADICTS"), "conflicts with verdict"),
+    (dict(_FAIL, finding="SUPPORTS"), "conflicts with verdict"),
+    (dict(_UNKNOWN, citation="trace.5"), "UNKNOWN verdict contains a decisive citation"),
     (_UNKNOWN, "Reviewer returned UNKNOWN"),
 ])
 def test_an_unresolved_or_unsupported_reply_remains_ungraded(reply, error):

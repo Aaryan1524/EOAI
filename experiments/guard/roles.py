@@ -18,7 +18,7 @@ _PURPOSES = {
         {"request", "public_context", "tool_declarations", "deterministic_criteria", "semantic_options"}, 512,
     ),
     ("reviewer", "criterion"): (
-        {"request", "public_context", "tool_names", "criterion", "evidence"}, 512,
+        {"request", "public_context", "tool_names", "target", "evidence"}, 128,
     ),
     ("candidate-generator", "distill"): ({"strategy", "incumbent", "regret", "tool_declarations"}, 2048),
     ("distiller", "repair"): ({"incumbent", "candidate", "gate", "regret", "tool_declarations"}, 2048),
@@ -50,15 +50,8 @@ def _role_format(purpose: str, payload: dict) -> dict:
     else:
         fields = {
             "verdict": {"type": "string", "enum": ["PASS", "FAIL", "UNKNOWN"]},
-            "why": {"type": "string"},
-            "evidence": {"type": "array", "items": {
-                "type": "object", "required": ["key", "quote", "finding"], "additionalProperties": False,
-                "properties": {
-                    "key": {"type": "string"},
-                    "quote": {"type": "string"},
-                    "finding": {"type": "string", "enum": ["SUPPORTS", "CONTRADICTS"]},
-                },
-            }},
+            "citation": {"type": "string", "enum": ["NONE", *payload["evidence"]]},
+            "finding": {"type": "string", "enum": ["SUPPORTS", "CONTRADICTS", "INDETERMINATE"]},
         }
     return {"type": "object", "required": sorted(fields), "additionalProperties": False, "properties": fields}
 

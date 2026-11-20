@@ -31,8 +31,7 @@ def _all_pass(selected):
     def reviewer(role, purpose, instruction, payload, temperature):
         if purpose == "checklist":
             return {"selected": selected}
-        return {"verdict": "PASS", "why": "The final coverage identifies the account.",
-                "evidence": [{"key": "output.coverage", "quote": "acme", "finding": "SUPPORTS"}]}
+        return {"verdict": "PASS", "citation": "output.coverage", "finding": "SUPPORTS"}
     return reviewer
 
 
