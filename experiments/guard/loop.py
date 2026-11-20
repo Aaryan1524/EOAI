@@ -183,22 +183,24 @@ def _proposal(model: Complete, incumbent: HarnessContent, strategy: str, regret:
         try:
             edit = Edit.parse(model("candidate-generator", "distill", DISTILL, payload, temperature))
             return apply_edit(incumbent, edit), edit
-        except (ValueError, RuntimeError) as error:
+        except ValueError as error:
             if attempt == 2:
                 raise ValueError("Candidate could not be generated within its retry budget") from error
     raise AssertionError("Unreachable proposal state")
 
 
-def _repair(model: Complete, incumbent: HarnessContent, winner: HarnessContent, gate: dict, regret: dict):
+def _repair(model: Complete, incumbent: HarnessContent, winner: HarnessContent,
+            winning_edit: Edit, gate: dict, regret: dict):
     value = model(
         "distiller", "repair",
         DISTILL + " Repair the winner by narrowing the rule associated with the observed replay regression. "
-        "Replace the offending guarded text rather than adding a conflicting second rule.",
+        "Set field and old exactly to the supplied winning_edit field and new text, respectively. "
+        "Replace that rule with a narrower one.",
         {"incumbent": incumbent.as_dict(), "candidate": winner.as_dict(), "gate": gate, "regret": regret}, 0.25,
     )
     edit = Edit.parse(value)
-    if not edit.old:
-        raise ValueError("Scope repair must replace an existing passage")
+    if edit.field != winning_edit.field or edit.old != winning_edit.new.strip():
+        raise ValueError("Scope repair must replace the winning rule in its original field")
     return apply_edit(winner, edit), edit
 
 
@@ -321,8 +323,16 @@ def run_rounds(
         promoted_batch = winning_batch
         repair = None
         if gate.repair_eligible and not gate.promoted:
+            repair_evidence = {
+                "winning_edit": asdict(proposals[selected][1]), "incumbent_regret": regret,
+                "hurt_replays": {
+                    task: {"paired_delta": paired_deltas[task], "incumbent": incumbent[task][0].excerpt,
+                           "winner": winning_batch[task][0].excerpt}
+                    for task in gate.hurt
+                },
+            }
             try:
-                repaired, edit = _repair(model, current, winner, asdict(gate), regret)
+                repaired, edit = _repair(model, current, winner, proposals[selected][1], asdict(gate), repair_evidence)
             except (ValueError, RuntimeError) as error:
                 repair = {"error": str(error)}
             else:

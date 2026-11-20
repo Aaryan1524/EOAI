@@ -20,7 +20,7 @@ def _reviewer(role, purpose, instruction, payload, temperature):
     if purpose == "checklist":
         assert set(payload) == {"request", "public_context", "tool_declarations", "deterministic_criteria"}
         assert "expectations" not in json.dumps(payload)
-        return {"criteria": [{"id": "req_1", "description": "Use the result to address the requested account."}]}
+        return {"criteria": [{"id": "req_1", "description": payload["request"].rstrip(".")}]}
     assert purpose == "criterion"
     assert set(payload) == {"request", "public_context", "tool_names", "criterion", "evidence"}
     assert "rendered_instructions" not in json.dumps(payload)
@@ -134,3 +134,34 @@ def test_checklist_rejects_executable_hooks_and_wrong_ids():
             task.request, task.public_context(), declarations_for_profile("enterprise_ops:v1"),
             lambda *args: {"criteria": [{"id": "req_2", "description": "Invent a result", "hook": "any"}]},
         )
+
+
+def test_checklist_retries_without_execution_and_rejects_unsourced_criteria():
+    task = RunTask("inventory", "List all invoices for Acme.", PRINCIPAL, "list_invoices", customer_id="acme")
+    replies = iter((
+        {"criteria": [{"id": "req_1", "description": "Use contract.get"}]},
+        {"criteria": [{"id": "req_1", "description": "List all invoices for Acme"}]},
+    ))
+    prompts = []
+
+    def reply(role, purpose, instruction, payload, temperature):
+        prompts.append(payload)
+        return next(replies)
+
+    checklist = derive_checklist(
+        task.request, task.public_context(), declarations_for_profile("enterprise_ops:v1"), reply,
+    )
+    assert checklist.criteria[-1].description == "List all invoices for Acme"
+    assert len(prompts) == 2 and prompts[0] == prompts[1]
+
+
+def test_reviewer_infrastructure_error_invalidates_pair(tmp_path):
+    task = RunTask("inventory", "List every Acme invoice.", PRINCIPAL, "list_invoices", customer_id="acme")
+    checklist, snapshot = _prepare(tmp_path, task)
+    result = _run(tmp_path, snapshot, task, [("invoice.search", {"customer_id": "acme"}), FINAL])
+
+    def timeout(*args):
+        raise RuntimeError("provider unavailable")
+
+    with pytest.raises(RuntimeError, match="provider unavailable"):
+        review_rollout(checklist, result, snapshot.path, timeout)
