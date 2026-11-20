@@ -18,9 +18,11 @@ FINAL = '{"customer_id":"acme","review_reason":null}'
 def _reviewer(role, purpose, instruction, payload, temperature):
     assert role == "reviewer" and temperature == 0.0
     if purpose == "checklist":
-        assert set(payload) == {"request", "public_context", "tool_declarations", "deterministic_criteria"}
+        assert set(payload) == {
+            "request", "public_context", "tool_declarations", "deterministic_criteria", "semantic_options",
+        }
         assert "expectations" not in json.dumps(payload)
-        return {"criteria": [{"id": "req_1", "description": payload["request"].rstrip(".")}]}
+        return {"selected": ["s1"]}
     assert purpose == "criterion"
     assert set(payload) == {"request", "public_context", "tool_names", "criterion", "evidence"}
     assert "rendered_instructions" not in json.dumps(payload)
@@ -132,15 +134,15 @@ def test_checklist_rejects_executable_hooks_and_wrong_ids():
     with pytest.raises(ValueError, match="Invalid semantic checklist criterion"):
         derive_checklist(
             task.request, task.public_context(), declarations_for_profile("enterprise_ops:v1"),
-            lambda *args: {"criteria": [{"id": "req_2", "description": "Invent a result", "hook": "any"}]},
+            lambda *args: {"selected": ["s999"]},
         )
 
 
 def test_checklist_retries_without_execution_and_rejects_unsourced_criteria():
     task = RunTask("inventory", "List all invoices for Acme.", PRINCIPAL, "list_invoices", customer_id="acme")
     replies = iter((
-        {"criteria": [{"id": "req_1", "description": "Use contract.get"}]},
-        {"criteria": [{"id": "req_1", "description": "List all invoices for Acme"}]},
+        {"selected": ["Use contract.get"]},
+        {"selected": ["s1"]},
     ))
     prompts = []
 

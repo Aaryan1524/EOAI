@@ -258,6 +258,7 @@ def run_rounds(
     prior = rejected = None
     history = [incumbent]
     ledger: list[dict] = []
+    rejected_artifacts: set[str] = set()
     prompts = [SHARED_STRATEGY] * policy.pool_size
     rounds = []
     for number in range(1, policy.rounds + 1):
@@ -267,7 +268,7 @@ def run_rounds(
         with ThreadPoolExecutor(max_workers=policy.pool_size) as pool:
             futures = [pool.submit(_proposal, model, current, prompt, regret) for prompt in prompts]
             proposals = [future.result() for future in futures]
-        seen = set()
+        seen = rejected_artifacts.copy()
         for index, (bundle, _) in enumerate(proposals):
             for _ in range(2):
                 if bundle.digest not in seen:
@@ -275,7 +276,7 @@ def run_rounds(
                 proposals[index] = _proposal(model, current, prompts[index], regret)
                 bundle = proposals[index][0]
             if bundle.digest in seen:
-                raise ValueError("Candidate pool contains repeated revisions")
+                raise ValueError("Candidate pool repeats a revision or a previously rejected harness")
             seen.add(bundle.digest)
         rows = []
         evaluated = []
@@ -333,6 +334,8 @@ def run_rounds(
             }
             try:
                 repaired, edit = _repair(model, current, winner, proposals[selected][1], asdict(gate), repair_evidence)
+                if repaired.digest in rejected_artifacts:
+                    raise ValueError("Scope repair repeats a previously rejected harness")
             except (ValueError, RuntimeError) as error:
                 repair = {"error": str(error)}
             else:
@@ -349,9 +352,11 @@ def run_rounds(
                 if repair_gate.promoted:
                     promoted, promoted_batch = repaired, corrected
                 else:
+                    rejected_artifacts.add(repaired_id)
                     winning_batch = corrected
         previous_id = incumbent_id
         if promoted is None:
+            rejected_artifacts.add(winning_id)
             rejected = winning_batch
             prior = None
             ledger = [row for row in ledger if row["artifact"] != winning_id]

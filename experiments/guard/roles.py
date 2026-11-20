@@ -14,7 +14,7 @@ from experiments.eoai_eval.isolation import _invoke, role_area
 
 _PURPOSES = {
     ("reviewer", "checklist"): (
-        {"request", "public_context", "tool_declarations", "deterministic_criteria"}, 1536,
+        {"request", "public_context", "tool_declarations", "deterministic_criteria", "semantic_options"}, 512,
     ),
     ("reviewer", "criterion"): (
         {"request", "public_context", "tool_names", "criterion", "evidence"}, 256,
@@ -184,10 +184,19 @@ class RoleModel:
                 if messages != expected:
                     raise RuntimeError("Unexpected role sandbox prompt")
 
+                response_format = "json"
+                if purpose == "checklist":
+                    response_format = {
+                        "type": "object", "required": ["selected"], "additionalProperties": False,
+                        "properties": {"selected": {
+                            "type": "array",
+                            "items": {"type": "string", "enum": list(payload["semantic_options"])},
+                        }},
+                    }
                 body = _json({
                     "model": self._model.model_id,
                     "messages": messages,
-                    "format": "json",
+                    "format": response_format,
                     "stream": False,
                     "think": False,
                     "options": {

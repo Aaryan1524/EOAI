@@ -1,6 +1,5 @@
 import json
 from itertools import count
-from pathlib import Path
 
 import pytest
 
@@ -80,3 +79,28 @@ def test_round_pairs_gate_rollbacks_and_never_promotes_failed_repair(tmp_path, r
     assert (tmp_path / "r1-rejection-ledger.json").exists() is not repair_passes
     for artifact in (tmp_path / "harnesses").iterdir():
         assert HarnessContent(**json.loads(artifact.read_text())).digest == artifact.stem
+
+
+def test_prior_rejection_is_skipped_even_if_a_later_proposal_repeats_its_text(tmp_path):
+    first = "[iff first scoped trigger] Review invoice evidence."
+    alternatives = iter((first, "[iff second scoped trigger] Check the terms.", first,
+                         "[iff third scoped trigger] Validate the cover.", "[iff fourth scoped trigger] Check dates."))
+
+    def model(role, purpose, instruction, payload, temperature):
+        if purpose == "distill":
+            return {"field": "skills", "old": "", "new": next(alternatives), "why": "Scripted gate test"}
+        return {"learnings": ["No gain."], "updated_best_prompt": "Use the evidence.",
+                "updated_worst_prompt": "Narrow the trigger."}
+
+    evaluated = []
+
+    def solve(harness, arm, tasks):
+        skills = getattr(harness, "skills", "")
+        evaluated.append(skills)
+        return {"seed": (Trajectory("seed", arm, (Verdict("criterion", skills in ("", first)),), False, {}, {}),)}
+
+    result = run_rounds(tmp_path, load_harness("v3"), ("seed",), (), {"seed": {"criterion": "Visible"}},
+                        solve, model, Policy(rounds=2))
+    assert [round_["decision"] for round_ in result["rounds"]] == ["reject", "reject"]
+    assert result["baseline"] == result["final"]
+    assert evaluated.count(first) == 1

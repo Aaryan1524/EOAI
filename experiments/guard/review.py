@@ -19,13 +19,10 @@ from pydantic import ValidationError
 
 Complete = Callable[[str, str, str, dict, float], dict]
 
-_CHECKLIST = """Select distinct atomic semantic checks from this public task.
-Each description must be an exact contiguous quotation from request, with one requirement
-per entry. Split independent requirements and use the whole request to interpret each excerpt.
-Focus on policy qualifiers, exceptions, evidence, and review requirements. Omit mechanics that
-deterministic_criteria already cover. Never add a tool call or result that the request does not name.
-Return {"criteria":[{"id":"req_1","description":"exact text from request"}]} with sequential IDs
-and at most five entries. Return {"criteria":[]} if the fixed checks cover the request.
+_CHECKLIST = """Select semantic checks from semantic_options. Use the whole request to interpret each
+phrase. Select policy qualifiers, exceptions, evidence, and explanations. Omit requirements
+deterministic_criteria already covers. Return only {"selected":["s1","s2"]} with the distinct option
+IDs you want to check. An empty list is valid when deterministic checks cover the request.
 """
 
 _REVIEW = """Grade only the supplied frozen criterion using the public request and cited evidence.
@@ -159,6 +156,13 @@ def derive_checklist(
     fixed = _fixed_checks(public_context, request)
     context_json = json.dumps(public_context, sort_keys=True)
     declarations_json = json.dumps(declarations, sort_keys=True)
+    phrases = re.split(
+        r"(?<=[.?!])\s+|,\s+|\s+and\s+(?=(?:use|follow|cite|flag|report|create|skip|ones)\b)",
+        scrub(request), flags=re.IGNORECASE,
+    )
+    options = {f"s{index}": item for index, item in enumerate(
+        dict.fromkeys(phrase.strip(" .,:;") for phrase in phrases if phrase.strip(" .,:;")), 1,
+    )}
     payload = {
         "request": scrub(request), "public_context": scrub(json.loads(context_json)),
         "tool_declarations": [{
@@ -167,38 +171,27 @@ def derive_checklist(
             "result_fields": sorted(row["result"].get("properties", {})),
         } for row in declarations],
         "deterministic_criteria": [row.description for row in fixed],
+        "semantic_options": options,
     }
     try:
         result = complete("reviewer", "checklist", _CHECKLIST, payload, 0.0)
-        criteria = _checklist_response(result, fixed, scrub(request))
+        criteria = _checklist_response(result, fixed, options)
     except ValueError:
         # A retry supplies format feedback only. No execution has taken place.
-        correction = "\nCopy short exact phrases, trim punctuation only, and use distinct sequential IDs."
+        correction = "\nList only IDs that occur in semantic_options and do not repeat an ID."
         result = complete("reviewer", "checklist", _CHECKLIST + correction, payload, 0.0)
-        criteria = _checklist_response(result, fixed, scrub(request))
+        criteria = _checklist_response(result, fixed, options)
     return Checklist(request, context_json, declarations_json, criteria)
 
 
-def _checklist_response(result: dict, fixed: list[Criterion], request: str) -> tuple[Criterion, ...]:
-    if type(result) is not dict or set(result) != {"criteria"} or type(result["criteria"]) is not list:
+def _checklist_response(result: dict, fixed: list[Criterion], options: dict) -> tuple[Criterion, ...]:
+    if type(result) is not dict or set(result) != {"selected"} or type(result["selected"]) is not list:
         raise ValueError("Invalid checklist response")
-    descriptions = {row.description.rstrip(".").casefold() for row in fixed}
-    criteria = list(fixed)
-    if len(result["criteria"]) > 5:
-        raise ValueError("Expected at most five semantic criteria")
-    for index, row in enumerate(result["criteria"], 1):
-        if (type(row) is not dict or set(row) != {"id", "description"} or row["id"] != f"req_{index}"
-                or not _text(row["description"], 600)):
-            raise ValueError("Invalid semantic checklist criterion")
-        description = scrub(row["description"])
-        normalized = description.strip(" .,:;").casefold()
-        if not normalized or len(normalized.split()) > 22 or normalized not in request.casefold():
-            raise ValueError("Semantic criterion must quote a short requirement from the public request")
-        if normalized in descriptions:
-            raise ValueError("Duplicate checklist criterion")
-        descriptions.add(normalized)
-        criteria.append(Criterion(row["id"], description))
-    return tuple(criteria)
+    selected = result["selected"]
+    if any(type(key) is not str or key not in options for key in selected) or len(set(selected)) != len(selected):
+        raise ValueError("Invalid semantic checklist criterion")
+    ordered = [key for key in options if key in selected]
+    return tuple(fixed) + tuple(Criterion(f"req_{key[1:]}", options[key]) for key in ordered)
 
 
 @dataclass(frozen=True)
