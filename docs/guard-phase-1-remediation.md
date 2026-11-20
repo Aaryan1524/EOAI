@@ -17,7 +17,8 @@ retain their previous versions. The original pilot is historical evidence.
   no new action required, a verified action, a denied or unrequired write, and
   a missing or unverified action.
 - **Semantic reliability.** A model verdict must match a bounded schema and
-  cite actual public evidence with an exact quote and a consistent stance.
+  select an existing public evidence reference with a consistent stance.
+  Python resolves that reference to the observed value for the stored rationale.
   The reviewer retries once on invalid or indeterminate output. Unresolved
   results are UNKNOWN. The raw assistant response and exact parse or validation
   error are retained in development review artifacts. A model transport or
@@ -56,6 +57,26 @@ check. That distinction matters. Meaningful assessment coverage improved in
 the historical candidate run, so simply adding another averaged binary check
 would still allow missing a required write to be offset by other gains.
 Both historical candidate edits also fail the new grounding check.
+
+### Live semantic calibration on fixed public evidence
+
+The same ten archived gate runs contain 18 semantic judgments. The original
+protocol produced six invalid results on those pairs. An intermediate
+quote-and-explanation contract left all 18 UNKNOWN after retry. The raw
+responses show budget truncation and unsupported copied citations. Its
+artifacts are preserved as `live-counterfactual.json`.
+
+The bounded evidence-reference contract completed **18 of 18** on the first
+attempt in `live-bounded-counterfactual.json`. Its full gate regrade yielded
+**−0.1515 mean points** and rejects for both insufficient gain and incomplete
+required action. Harborline's candidate gate rollout scored **75.00 / 37.50**
+under these fresh judgments, including the failed deterministic obligation.
+The independent outcome remains a failure. The pilot's before/after fingerprint
+was identical. This sample establishes response reliability on archived
+public evidence. It does not establish semantic accuracy on new cases.
+
+The final native suite passed **412 tests**. All **18 adversarial tests**
+passed with zero expected failures.
 
 ## Deviations and limits
 

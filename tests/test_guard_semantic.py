@@ -40,10 +40,13 @@ def test_grounded_grade_resolves_the_reference_to_observed_evidence(reply, expec
     ({"passed": True, "why": "Yes", "evidence": ["output.coverage"]}, "Invalid semantic verdict fields"),
     (dict(_PASS, verdict=True), "Invalid semantic verdict label"),
     (dict(_PASS, citation=None), "Unknown or empty semantic evidence key"),
+    (dict(_PASS, citation=[]), "Unknown or empty semantic evidence key"),
     (dict(_PASS, citation="output.missing"), "Unknown or empty semantic evidence key"),
     (dict(_PASS, finding="CONTRADICTS"), "conflicts with verdict"),
+    (dict(_PASS, finding="INDETERMINATE"), "conflicts with verdict"),
     (dict(_FAIL, finding="SUPPORTS"), "conflicts with verdict"),
     (dict(_UNKNOWN, citation="trace.5"), "UNKNOWN verdict contains a decisive citation"),
+    ({"verdict": "PASS", "finding": "SUPPORTS"}, "Invalid semantic verdict fields"),
     (_UNKNOWN, "Reviewer returned UNKNOWN"),
 ])
 def test_an_unresolved_or_unsupported_reply_remains_ungraded(reply, error):
