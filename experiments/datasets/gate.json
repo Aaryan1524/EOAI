@@ -1,0 +1,158 @@
+{
+  "schema_version": 1,
+  "split": "gate",
+  "cases": [
+    {
+      "catalog_task": "compound-escalation",
+      "authorize_writes": true,
+      "expectations": {
+        "tenant_id": "harborline_operations",
+        "customer_id": "harborline",
+        "actor_id": "analyst",
+        "invoices": {
+          "INV-H01": {
+            "decision": "eligible",
+            "reason_codes": [
+              "OVERDUE_WITH_OUTSTANDING_BALANCE"
+            ],
+            "effective_due_date": "2026-08-24",
+            "stated_due_date": "2026-08-14",
+            "stated_due_date_differs": true,
+            "days_past_due": 87,
+            "outstanding_minor": 800000,
+            "currency": "USD",
+            "evidence_sources": [
+              {
+                "source_type": "document_span",
+                "source_id": "D-HARBORLINE"
+              },
+              {
+                "source_type": "document_span",
+                "source_id": "D-HARBORLINE-SUMMER"
+              }
+            ]
+          },
+          "INV-H02": {
+            "decision": "eligible",
+            "reason_codes": [
+              "OVERDUE_WITH_OUTSTANDING_BALANCE"
+            ],
+            "effective_due_date": "2026-09-07",
+            "stated_due_date": "2026-08-28",
+            "stated_due_date_differs": true,
+            "days_past_due": 73,
+            "outstanding_minor": 320000,
+            "currency": "USD",
+            "evidence_sources": [
+              {
+                "source_type": "document_span",
+                "source_id": "D-HARBORLINE"
+              },
+              {
+                "source_type": "document_span",
+                "source_id": "D-HARBORLINE-SUMMER"
+              }
+            ]
+          },
+          "INV-H03": {
+            "decision": "needs_review",
+            "reason_codes": [
+              "AMBIGUOUS_AMENDMENT"
+            ],
+            "effective_due_date": null,
+            "stated_due_date": "2026-09-09",
+            "stated_due_date_differs": null,
+            "days_past_due": null,
+            "outstanding_minor": 625000,
+            "currency": "USD",
+            "evidence_sources": [
+              {
+                "source_type": "document_span",
+                "source_id": "D-HARBORLINE"
+              },
+              {
+                "source_type": "document_span",
+                "source_id": "D-HARBORLINE-AUGUST"
+              },
+              {
+                "source_type": "document_span",
+                "source_id": "D-HARBORLINE-SUMMER"
+              }
+            ]
+          },
+          "INV-H04": {
+            "decision": "ineligible",
+            "reason_codes": [
+              "ACTIVE_DISPUTE"
+            ],
+            "effective_due_date": "2026-10-03",
+            "stated_due_date": "2026-10-03",
+            "stated_due_date_differs": false,
+            "days_past_due": 47,
+            "outstanding_minor": 195000,
+            "currency": "USD",
+            "evidence_sources": [
+              {
+                "source_type": "document_span",
+                "source_id": "D-HARBORLINE"
+              }
+            ]
+          },
+          "INV-H05": {
+            "decision": "ineligible",
+            "reason_codes": [
+              "NO_OUTSTANDING_BALANCE"
+            ],
+            "effective_due_date": "2026-10-04",
+            "stated_due_date": "2026-10-04",
+            "stated_due_date_differs": false,
+            "days_past_due": 46,
+            "outstanding_minor": 0,
+            "currency": "USD",
+            "evidence_sources": [
+              {
+                "source_type": "document_span",
+                "source_id": "D-HARBORLINE"
+              }
+            ]
+          },
+          "INV-H06": {
+            "decision": "ineligible",
+            "reason_codes": [
+              "OVERDUE_THRESHOLD_NOT_MET"
+            ],
+            "effective_due_date": "2026-10-21",
+            "stated_due_date": "2026-10-21",
+            "stated_due_date_differs": false,
+            "days_past_due": 29,
+            "outstanding_minor": 81100,
+            "currency": "USD",
+            "evidence_sources": [
+              {
+                "source_type": "document_span",
+                "source_id": "D-HARBORLINE"
+              }
+            ]
+          }
+        },
+        "new_tickets": {
+          "INV-H01": {
+            "status": "open",
+            "reason_code": "OVERDUE_WITH_OUTSTANDING_BALANCE"
+          }
+        },
+        "existing_tickets": {
+          "INV-H02": "TCK-H02"
+        },
+        "missing_information": [
+          {
+            "code": "ASSESSMENT_NEEDS_REVIEW",
+            "subject_id": "INV-H03"
+          }
+        ],
+        "status": "partial",
+        "review_required": true
+      }
+    }
+  ]
+}
