@@ -11,7 +11,7 @@ from typing import Literal
 from pydantic import TypeAdapter, ValidationError
 
 from enterprise_ops.agent.handles import ToolHandles
-from enterprise_ops.agent.harness import Harness, load_harness
+from enterprise_ops.agent.harness import Harness, HarnessContent, load_harness
 from enterprise_ops.agent.model import Model, ModelError, OllamaModel, strict_json
 from enterprise_ops.agent.output import Ledger, RunOutput
 from enterprise_ops.agent.trace import RunTrace
@@ -127,13 +127,13 @@ _WRITES = {
 
 class _Run:
     def __init__(
-        self, gateway: ToolGateway, model: Model, task: RunTask, harness: Harness,
+        self, gateway: ToolGateway, model: Model, task: RunTask, instructions: str,
         limits: RunLimits, trace: RunTrace, run_id: str, business_date: str,
     ) -> None:
         self.gateway = gateway
         self.model = model
         self.task = task
-        self.harness = harness
+        self.instructions = instructions
         self.limits = limits
         self.trace = trace
         self.run_id = run_id
@@ -305,7 +305,7 @@ class _Run:
             self.model_turns += 1
             try:
                 turn = self.model.turn(
-                    instructions=self.harness.instructions, transcript=tuple(transcript),
+                    instructions=self.instructions, transcript=tuple(transcript),
                     declarations=self.declarations, timeout=self.remaining,
                     max_output_tokens=min(tokens_left, self.limits.output_tokens_per_turn),
                 )
@@ -375,7 +375,7 @@ class _Run:
                         offered_token = pending
                         continue
                 if (
-                    self.harness.version == "v3" and choice.review_reason is None
+                    choice.review_reason is None
                     and not checked_completion and self.tool_calls < self.limits.tool_calls
                     and self.completion_feedback(transcript, choice)
                 ):
@@ -411,7 +411,7 @@ class _Run:
             if not response.ok and response.error.code in {"VALIDATION_ERROR", "SCHEMA_MISMATCH"}:
                 invalid = digest(json.dumps([call.name, args], sort_keys=True))
                 message = "Use a declared tool name and its exact argument schema. Correct the rejected call once."
-                if self.harness.version == "v3" and response.error.message == "Invalid pagination cursor":
+                if response.error.message == "Invalid pagination cursor":
                     message = (
                         "Copy the latest continuation from this same search. Repeat its original "
                         "arguments exactly, including page size and any filters. If needed, restart without a cursor."
@@ -495,15 +495,21 @@ def run_task(
     run_id: str,
     runs_root: Path,
     limits: RunLimits | None = None,
-    harness: Harness | None = None,
+    harness: Harness | HarnessContent | None = None,
     faults: FaultPlan | None = None,
     model_digest: str | None = None,
     scenario: str | None = None,
 ) -> RunResult:
     limits = limits or RunLimits(tool_calls=12 if task.operation == "list_invoices" else 35)
     harness = harness or load_harness()
-    if sha256(harness.instructions.encode()).hexdigest() != harness.digest:
-        raise ValueError("Harness instructions do not match their digest")
+    if isinstance(harness, HarnessContent):
+        instructions = harness.render()
+        harness_identity = {"version": "experiment", "digest": harness.digest}
+    else:
+        instructions = harness.instructions
+        if sha256(instructions.encode()).hexdigest() != harness.digest:
+            raise ValueError("Harness instructions do not match their digest")
+        harness_identity = {"version": harness.version, "digest": harness.digest}
     if isinstance(model, OllamaModel):
         model_digest = model_digest or model.model_digest(timeout=min(5.0, limits.deadline_seconds))
         model_digest = model.pin_model_digest(model_digest)
@@ -514,7 +520,7 @@ def run_task(
     gateway = ToolGateway(sandbox, task.principal, write_scope=task.write_scope, faults=faults)
     trace = RunTrace(runs_root / "traces", sandbox)
     run = _Run(
-        gateway, model, task, harness, limits, trace, run_id,
+        gateway, model, task, instructions, limits, trace, run_id,
         sandbox.clock.business_date(timezone).isoformat(),
     )
     trace.write("manifest", {
@@ -526,12 +532,12 @@ def run_task(
         "tool_declarations_digest": digest(run.declarations), "as_of": trace.as_of,
         "provider": model.provider, "model_id": model.model_id, "model_digest": model_digest,
         "model_settings": getattr(model, "settings", None),
-        "harness": {"version": harness.version, "digest": harness.digest},
+        "harness": harness_identity,
         "limits": asdict(limits),
     })
     trace.write("input", {
         "task": task.public_context(), "request": task.request, "tenant_id": task.principal.tenant_id,
-        "user_id": task.principal.user_id, "rendered_instructions": harness.instructions,
+        "user_id": task.principal.user_id, "rendered_instructions": instructions,
     })
     choice, stop = run.execute()
     output = run.output(choice, stop)

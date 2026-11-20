@@ -1,0 +1,659 @@
+{
+  "$defs": {
+    "_Decision": {
+      "additionalProperties": false,
+      "properties": {
+        "currency": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Currency"
+        },
+        "days_past_due": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Days Past Due"
+        },
+        "decision": {
+          "enum": [
+            "eligible",
+            "ineligible",
+            "needs_review"
+          ],
+          "title": "Decision",
+          "type": "string"
+        },
+        "effective_due_date": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Effective Due Date"
+        },
+        "evidence_sources": {
+          "items": {
+            "$ref": "#/$defs/_EvidenceSource"
+          },
+          "title": "Evidence Sources",
+          "type": "array"
+        },
+        "outstanding_minor": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Outstanding Minor"
+        },
+        "reason_codes": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Reason Codes",
+          "type": "array"
+        },
+        "stated_due_date": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Stated Due Date"
+        },
+        "stated_due_date_differs": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Stated Due Date Differs"
+        }
+      },
+      "required": [
+        "decision",
+        "reason_codes"
+      ],
+      "title": "_Decision",
+      "type": "object"
+    },
+    "_EvidenceSource": {
+      "additionalProperties": false,
+      "properties": {
+        "source_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Source Id",
+          "type": "string"
+        },
+        "source_type": {
+          "title": "Source Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "source_type",
+        "source_id"
+      ],
+      "title": "_EvidenceSource",
+      "type": "object"
+    },
+    "_Expectations": {
+      "additionalProperties": false,
+      "properties": {
+        "actor_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Actor Id",
+          "type": "string"
+        },
+        "coverage_invoice_ids": {
+          "items": {
+            "maxLength": 128,
+            "minLength": 1,
+            "type": "string"
+          },
+          "title": "Coverage Invoice Ids",
+          "type": "array"
+        },
+        "customer_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Customer Id",
+          "type": "string"
+        },
+        "customer_query": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Customer Query"
+        },
+        "existing_tickets": {
+          "additionalProperties": {
+            "maxLength": 128,
+            "minLength": 1,
+            "type": "string"
+          },
+          "propertyNames": {
+            "maxLength": 128,
+            "minLength": 1
+          },
+          "title": "Existing Tickets",
+          "type": "object"
+        },
+        "invoice_page_size": {
+          "anyOf": [
+            {
+              "maximum": 25,
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Invoice Page Size"
+        },
+        "invoice_search_required": {
+          "default": true,
+          "title": "Invoice Search Required",
+          "type": "boolean"
+        },
+        "invoice_statuses": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Invoice Statuses",
+          "type": "array"
+        },
+        "invoices": {
+          "additionalProperties": {
+            "$ref": "#/$defs/_Decision"
+          },
+          "propertyNames": {
+            "maxLength": 128,
+            "minLength": 1
+          },
+          "title": "Invoices",
+          "type": "object"
+        },
+        "missing_information": {
+          "items": {
+            "$ref": "#/$defs/_MissingInformation"
+          },
+          "title": "Missing Information",
+          "type": "array"
+        },
+        "new_tickets": {
+          "additionalProperties": {
+            "$ref": "#/$defs/_Ticket"
+          },
+          "propertyNames": {
+            "maxLength": 128,
+            "minLength": 1
+          },
+          "title": "New Tickets",
+          "type": "object"
+        },
+        "pending_invoice_ids": {
+          "items": {
+            "maxLength": 128,
+            "minLength": 1,
+            "type": "string"
+          },
+          "title": "Pending Invoice Ids",
+          "type": "array"
+        },
+        "require_customer_search_exhausted": {
+          "default": false,
+          "title": "Require Customer Search Exhausted",
+          "type": "boolean"
+        },
+        "require_existing_actions": {
+          "default": true,
+          "title": "Require Existing Actions",
+          "type": "boolean"
+        },
+        "review_required": {
+          "default": false,
+          "title": "Review Required",
+          "type": "boolean"
+        },
+        "status": {
+          "default": "resolved",
+          "enum": [
+            "resolved",
+            "partial",
+            "needs_review",
+            "failed"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "tenant_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Tenant Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "tenant_id",
+        "customer_id",
+        "actor_id",
+        "invoices",
+        "new_tickets",
+        "existing_tickets"
+      ],
+      "title": "_Expectations",
+      "type": "object"
+    },
+    "_FaultSpec": {
+      "additionalProperties": false,
+      "properties": {
+        "attempt": {
+          "minimum": 1,
+          "title": "Attempt",
+          "type": "integer"
+        },
+        "kind": {
+          "enum": [
+            "RATE_LIMITED",
+            "TRANSIENT_FAILURE",
+            "EMPTY_PAGE",
+            "LOSE_RESPONSE"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "tool_name": {
+          "minLength": 1,
+          "title": "Tool Name",
+          "type": "string"
+        }
+      },
+      "required": [
+        "tool_name",
+        "attempt",
+        "kind"
+      ],
+      "title": "_FaultSpec",
+      "type": "object"
+    },
+    "_HeldoutCase": {
+      "additionalProperties": false,
+      "properties": {
+        "expectations": {
+          "$ref": "#/$defs/_Expectations"
+        },
+        "faults": {
+          "items": {
+            "$ref": "#/$defs/_FaultSpec"
+          },
+          "title": "Faults",
+          "type": "array"
+        },
+        "id": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+          "title": "Id",
+          "type": "string"
+        },
+        "lineage": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Lineage",
+          "type": "string"
+        },
+        "profile": {
+          "enum": [
+            "enterprise_ops:v1",
+            "enterprise_ops:v2"
+          ],
+          "title": "Profile",
+          "type": "string"
+        },
+        "snapshot": {
+          "$ref": "#/$defs/_SnapshotSpec"
+        },
+        "task": {
+          "$ref": "#/$defs/_TaskSpec"
+        }
+      },
+      "required": [
+        "id",
+        "lineage",
+        "profile",
+        "task",
+        "snapshot",
+        "expectations"
+      ],
+      "title": "_HeldoutCase",
+      "type": "object"
+    },
+    "_MissingInformation": {
+      "additionalProperties": false,
+      "properties": {
+        "code": {
+          "title": "Code",
+          "type": "string"
+        },
+        "subject_id": {
+          "anyOf": [
+            {
+              "maxLength": 128,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Subject Id"
+        }
+      },
+      "required": [
+        "code",
+        "subject_id"
+      ],
+      "title": "_MissingInformation",
+      "type": "object"
+    },
+    "_SnapshotSpec": {
+      "additionalProperties": false,
+      "properties": {
+        "filename": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}\\.sqlite3$",
+          "title": "Filename",
+          "type": "string"
+        },
+        "sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Sha256",
+          "type": "string"
+        },
+        "simulation_time": {
+          "title": "Simulation Time",
+          "type": "string"
+        }
+      },
+      "required": [
+        "filename",
+        "sha256",
+        "simulation_time"
+      ],
+      "title": "_SnapshotSpec",
+      "type": "object"
+    },
+    "_TaskSpec": {
+      "additionalProperties": false,
+      "properties": {
+        "authorized_actions": {
+          "items": {
+            "const": "create_ticket",
+            "type": "string"
+          },
+          "title": "Authorized Actions",
+          "type": "array"
+        },
+        "customer_id": {
+          "anyOf": [
+            {
+              "maxLength": 128,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Customer Id"
+        },
+        "customer_query": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Customer Query"
+        },
+        "exclude_disputed": {
+          "default": false,
+          "title": "Exclude Disputed",
+          "type": "boolean"
+        },
+        "invoice_ids": {
+          "anyOf": [
+            {
+              "items": {
+                "maxLength": 128,
+                "minLength": 1,
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Invoice Ids"
+        },
+        "operation": {
+          "enum": [
+            "list_invoices",
+            "review_invoices",
+            "escalate"
+          ],
+          "title": "Operation",
+          "type": "string"
+        },
+        "request": {
+          "maxLength": 4096,
+          "minLength": 1,
+          "title": "Request",
+          "type": "string"
+        },
+        "tenant_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Tenant Id",
+          "type": "string"
+        },
+        "threshold_days": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Threshold Days"
+        },
+        "user_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "User Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "request",
+        "tenant_id",
+        "user_id",
+        "operation"
+      ],
+      "title": "_TaskSpec",
+      "type": "object"
+    },
+    "_Ticket": {
+      "additionalProperties": false,
+      "properties": {
+        "created_at": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Created At"
+        },
+        "id": {
+          "anyOf": [
+            {
+              "maxLength": 128,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Id"
+        },
+        "invoice_id": {
+          "anyOf": [
+            {
+              "maxLength": 128,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Invoice Id"
+        },
+        "policy_id": {
+          "anyOf": [
+            {
+              "maxLength": 128,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Policy Id"
+        },
+        "policy_version": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Policy Version"
+        },
+        "reason_code": {
+          "title": "Reason Code",
+          "type": "string"
+        },
+        "status": {
+          "title": "Status",
+          "type": "string"
+        },
+        "version": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Version"
+        }
+      },
+      "required": [
+        "status",
+        "reason_code"
+      ],
+      "title": "_Ticket",
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "cases": {
+      "items": {
+        "$ref": "#/$defs/_HeldoutCase"
+      },
+      "minItems": 1,
+      "title": "Cases",
+      "type": "array"
+    },
+    "schema_version": {
+      "const": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "split": {
+      "const": "heldout",
+      "title": "Split",
+      "type": "string"
+    }
+  },
+  "required": [
+    "schema_version",
+    "split",
+    "cases"
+  ],
+  "title": "EOAI evaluator-only held-out suite",
+  "type": "object"
+}

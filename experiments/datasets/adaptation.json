@@ -1,0 +1,392 @@
+{
+  "schema_version": 1,
+  "split": "adaptation",
+  "cases": [
+    {
+      "catalog_task": "acme-list",
+      "authorize_writes": false,
+      "expectations": {
+        "tenant_id": "northstar_property",
+        "customer_id": "acme",
+        "actor_id": "analyst",
+        "coverage_invoice_ids": [
+          "INV-104",
+          "INV-105",
+          "INV-106",
+          "INV-107"
+        ],
+        "invoices": {},
+        "new_tickets": {},
+        "existing_tickets": {
+          "INV-106": "TCK-901"
+        },
+        "require_customer_search_exhausted": true,
+        "customer_query": "Acme Property Group",
+        "require_existing_actions": false
+      }
+    },
+    {
+      "catalog_task": "acme-escalation",
+      "authorize_writes": true,
+      "expectations": {
+        "tenant_id": "northstar_property",
+        "customer_id": "acme",
+        "actor_id": "analyst",
+        "invoices": {
+          "INV-104": {
+            "decision": "eligible",
+            "reason_codes": [
+              "OVERDUE_WITH_OUTSTANDING_BALANCE"
+            ],
+            "effective_due_date": "2026-10-01",
+            "stated_due_date": "2026-09-16",
+            "stated_due_date_differs": true,
+            "days_past_due": 49,
+            "outstanding_minor": 1000000,
+            "currency": "USD",
+            "evidence_sources": [
+              {
+                "source_type": "document_span",
+                "source_id": "D-ACME"
+              },
+              {
+                "source_type": "document_span",
+                "source_id": "D-ACME-SIGNED"
+              }
+            ]
+          }
+        },
+        "new_tickets": {
+          "INV-104": {
+            "status": "open",
+            "reason_code": "OVERDUE_WITH_OUTSTANDING_BALANCE"
+          }
+        },
+        "existing_tickets": {},
+        "invoice_search_required": false
+      }
+    },
+    {
+      "catalog_task": "meridian-conflict",
+      "authorize_writes": false,
+      "expectations": {
+        "tenant_id": "northstar_property",
+        "customer_id": "meridian",
+        "actor_id": "analyst",
+        "invoices": {
+          "INV-M01": {
+            "decision": "needs_review",
+            "reason_codes": [
+              "AMBIGUOUS_AMENDMENT"
+            ],
+            "effective_due_date": null,
+            "stated_due_date": "2026-09-16",
+            "stated_due_date_differs": null,
+            "days_past_due": null,
+            "outstanding_minor": 52700,
+            "currency": "USD",
+            "evidence_sources": [
+              {
+                "source_type": "document_span",
+                "source_id": "D-MERIDIAN"
+              },
+              {
+                "source_type": "document_span",
+                "source_id": "D-MERIDIAN-A"
+              },
+              {
+                "source_type": "document_span",
+                "source_id": "D-MERIDIAN-B"
+              }
+            ]
+          }
+        },
+        "new_tickets": {},
+        "existing_tickets": {},
+        "invoice_search_required": false,
+        "require_existing_actions": false,
+        "missing_information": [
+          {
+            "code": "ASSESSMENT_NEEDS_REVIEW",
+            "subject_id": "INV-M01"
+          }
+        ],
+        "status": "needs_review",
+        "review_required": true
+      }
+    },
+    {
+      "catalog_task": "acme-account-escalation",
+      "authorize_writes": true,
+      "expectations": {
+        "tenant_id": "northstar_property",
+        "customer_id": "acme",
+        "actor_id": "analyst",
+        "invoices": {
+          "INV-104": {
+            "decision": "eligible",
+            "reason_codes": [
+              "OVERDUE_WITH_OUTSTANDING_BALANCE"
+            ],
+            "effective_due_date": "2026-10-01",
+            "stated_due_date": "2026-09-16",
+            "stated_due_date_differs": true,
+            "days_past_due": 49,
+            "outstanding_minor": 1000000,
+            "currency": "USD",
+            "evidence_sources": [
+              {
+                "source_type": "document_span",
+                "source_id": "D-ACME"
+              },
+              {
+                "source_type": "document_span",
+                "source_id": "D-ACME-SIGNED"
+              }
+            ]
+          },
+          "INV-105": {
+            "decision": "ineligible",
+            "reason_codes": [
+              "ACTIVE_DISPUTE"
+            ],
+            "effective_due_date": "2026-09-26",
+            "stated_due_date": "2026-09-11",
+            "stated_due_date_differs": true,
+            "days_past_due": 54,
+            "outstanding_minor": 180000,
+            "currency": "USD",
+            "evidence_sources": [
+              {
+                "source_type": "document_span",
+                "source_id": "D-ACME"
+              },
+              {
+                "source_type": "document_span",
+                "source_id": "D-ACME-SIGNED"
+              }
+            ]
+          },
+          "INV-106": {
+            "decision": "eligible",
+            "reason_codes": [
+              "OVERDUE_WITH_OUTSTANDING_BALANCE"
+            ],
+            "effective_due_date": "2026-09-29",
+            "stated_due_date": "2026-09-14",
+            "stated_due_date_differs": true,
+            "days_past_due": 51,
+            "outstanding_minor": 240000,
+            "currency": "USD",
+            "evidence_sources": [
+              {
+                "source_type": "document_span",
+                "source_id": "D-ACME"
+              },
+              {
+                "source_type": "document_span",
+                "source_id": "D-ACME-SIGNED"
+              }
+            ]
+          },
+          "INV-107": {
+            "decision": "ineligible",
+            "reason_codes": [
+              "NO_OUTSTANDING_BALANCE"
+            ],
+            "effective_due_date": "2026-10-03",
+            "stated_due_date": "2026-09-18",
+            "stated_due_date_differs": true,
+            "days_past_due": 47,
+            "outstanding_minor": 0,
+            "currency": "USD",
+            "evidence_sources": [
+              {
+                "source_type": "document_span",
+                "source_id": "D-ACME"
+              },
+              {
+                "source_type": "document_span",
+                "source_id": "D-ACME-SIGNED"
+              }
+            ]
+          }
+        },
+        "new_tickets": {
+          "INV-104": {
+            "status": "open",
+            "reason_code": "OVERDUE_WITH_OUTSTANDING_BALANCE"
+          }
+        },
+        "existing_tickets": {
+          "INV-106": "TCK-901"
+        }
+      }
+    },
+    {
+      "catalog_task": "acme-paged-v2",
+      "authorize_writes": false,
+      "expectations": {
+        "tenant_id": "northstar_property",
+        "customer_id": "acme",
+        "actor_id": "analyst",
+        "invoices": {
+          "INV-104": {
+            "decision": "eligible",
+            "reason_codes": [
+              "OVERDUE_WITH_OUTSTANDING_BALANCE"
+            ],
+            "effective_due_date": "2026-10-01",
+            "stated_due_date": "2026-09-16",
+            "stated_due_date_differs": true,
+            "days_past_due": 49,
+            "outstanding_minor": 1000000,
+            "currency": "USD",
+            "evidence_sources": [
+              {
+                "source_type": "document_span",
+                "source_id": "D-ACME"
+              },
+              {
+                "source_type": "document_span",
+                "source_id": "D-ACME-SIGNED"
+              }
+            ]
+          },
+          "INV-105": {
+            "decision": "ineligible",
+            "reason_codes": [
+              "ACTIVE_DISPUTE"
+            ],
+            "effective_due_date": "2026-09-26",
+            "stated_due_date": "2026-09-11",
+            "stated_due_date_differs": true,
+            "days_past_due": 54,
+            "outstanding_minor": 180000,
+            "currency": "USD",
+            "evidence_sources": [
+              {
+                "source_type": "document_span",
+                "source_id": "D-ACME"
+              },
+              {
+                "source_type": "document_span",
+                "source_id": "D-ACME-SIGNED"
+              }
+            ]
+          },
+          "INV-106": {
+            "decision": "eligible",
+            "reason_codes": [
+              "OVERDUE_WITH_OUTSTANDING_BALANCE"
+            ],
+            "effective_due_date": "2026-09-29",
+            "stated_due_date": "2026-09-14",
+            "stated_due_date_differs": true,
+            "days_past_due": 51,
+            "outstanding_minor": 240000,
+            "currency": "USD",
+            "evidence_sources": [
+              {
+                "source_type": "document_span",
+                "source_id": "D-ACME"
+              },
+              {
+                "source_type": "document_span",
+                "source_id": "D-ACME-SIGNED"
+              }
+            ]
+          },
+          "INV-107": {
+            "decision": "ineligible",
+            "reason_codes": [
+              "NO_OUTSTANDING_BALANCE"
+            ],
+            "effective_due_date": "2026-10-03",
+            "stated_due_date": "2026-09-18",
+            "stated_due_date_differs": true,
+            "days_past_due": 47,
+            "outstanding_minor": 0,
+            "currency": "USD",
+            "evidence_sources": [
+              {
+                "source_type": "document_span",
+                "source_id": "D-ACME"
+              },
+              {
+                "source_type": "document_span",
+                "source_id": "D-ACME-SIGNED"
+              }
+            ]
+          },
+          "INV-108": {
+            "decision": "eligible",
+            "reason_codes": [
+              "OVERDUE_WITH_OUTSTANDING_BALANCE"
+            ],
+            "effective_due_date": "2026-08-30",
+            "stated_due_date": "2026-08-30",
+            "stated_due_date_differs": false,
+            "days_past_due": 81,
+            "outstanding_minor": 115000,
+            "currency": "USD",
+            "evidence_sources": [
+              {
+                "source_type": "document_span",
+                "source_id": "D-ACME"
+              }
+            ]
+          },
+          "INV-109": {
+            "decision": "ineligible",
+            "reason_codes": [
+              "OVERDUE_THRESHOLD_NOT_MET"
+            ],
+            "effective_due_date": "2026-11-14",
+            "stated_due_date": "2026-10-30",
+            "stated_due_date_differs": true,
+            "days_past_due": 5,
+            "outstanding_minor": 235000,
+            "currency": "USD",
+            "evidence_sources": [
+              {
+                "source_type": "document_span",
+                "source_id": "D-ACME"
+              },
+              {
+                "source_type": "document_span",
+                "source_id": "D-ACME-SIGNED"
+              }
+            ]
+          },
+          "INV-110": {
+            "decision": "ineligible",
+            "reason_codes": [
+              "OVERDUE_THRESHOLD_NOT_MET"
+            ],
+            "effective_due_date": "2026-10-31",
+            "stated_due_date": "2026-10-31",
+            "stated_due_date_differs": false,
+            "days_past_due": 19,
+            "outstanding_minor": 39000,
+            "currency": "USD",
+            "evidence_sources": [
+              {
+                "source_type": "document_span",
+                "source_id": "D-ACME"
+              }
+            ]
+          }
+        },
+        "new_tickets": {},
+        "existing_tickets": {
+          "INV-106": "TCK-901"
+        },
+        "require_customer_search_exhausted": true,
+        "customer_query": "Acme Property Group",
+        "require_existing_actions": false,
+        "invoice_page_size": 3
+      }
+    }
+  ]
+}

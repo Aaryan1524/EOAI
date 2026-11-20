@@ -262,6 +262,13 @@ class OllamaModel:
         except (AttributeError, KeyError, TypeError, ValueError, RecursionError):
             raise ModelError("Invalid Ollama chat response") from None
 
+    def runtime_version(self, *, timeout: float = 5.0) -> str:
+        response = self._request("GET", "/api/version", timeout)
+        version = response.get("version")
+        if not isinstance(version, str) or not re.fullmatch(r"[0-9A-Za-z.+-]{1,64}", version):
+            raise ModelError("Ollama runtime version unavailable")
+        return version
+
     def model_digest(self, *, timeout: float = 5.0) -> str:
         response = self._request("GET", "/api/tags", timeout)
         model_ids = {self.model_id}
