@@ -196,3 +196,11 @@ def test_external_score_accepts_legitimate_unknown_tool_correction(tmp_path):
     unknown, = [item for item in events if item["event"] == "tool" and item["tool"] == "unknown"]
     assert not unknown["response"]["ok"] and unknown["response"]["error"]["code"] == "SCHEMA_MISMATCH"
     assert score(*run, ACME)["passed"]
+
+
+def test_external_score_can_require_an_exact_invoice_page_size(tmp_path):
+    run = _acme_run(tmp_path)
+    assert score(*run, ACME | {"invoice_page_size": 2})["passed"]
+    result = score(*run, ACME | {"invoice_page_size": 3})
+    assert not result["passed"] and not result["checks"]["invoice_search"]
+    assert result["checks"]["invoice_coverage"]

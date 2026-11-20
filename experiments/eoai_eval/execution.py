@@ -10,6 +10,7 @@ from importlib import metadata
 from pathlib import Path
 from time import monotonic
 
+import enterprise_ops
 from enterprise_ops.agent.harness import Harness, HarnessContent, load_harness
 from enterprise_ops.agent.model import OllamaModel, strict_json
 from enterprise_ops.agent.runner import RunLimits, RunResult, RunTask, run_task
@@ -55,6 +56,8 @@ def source_identity(root: Path = ROOT) -> dict:
         return subprocess.check_output(["git", "-C", str(root), *args], text=True).strip()
 
     source = root / "src" / "enterprise_ops"
+    if Path(enterprise_ops.__file__).resolve().parent != source.resolve():
+        raise ValueError("The imported EOAI package differs from the measured checkout")
     lockfile = root / "uv.lock"
     execution_files = _files(source) + [root / "pyproject.toml", lockfile]
     return {
@@ -141,3 +144,14 @@ def fixed_conditions(provenance: dict) -> dict:
         "tool_versions": provenance["tool_versions"],
         "run": {key: value for key, value in run.items() if key not in {"run_id", "sandbox_id", "harness"}},
     }
+
+
+def verify_trial_artifacts(trace: Path, database: Path, provenance: dict) -> None:
+    names = {"manifest.json", "input.json", "final_output.json", "summary.json",
+             "state_delta.json", "evidence.json", "errors.json", "trace.jsonl"}
+    actual = {name: sha_file(trace / name) for name in names if (trace / name).is_file()}
+    actual["run.sqlite3"] = sha_file(database)
+    if provenance["artifacts"] != actual:
+        raise ValueError("Trial artifact digests differ from recorded digests")
+    if provenance["run"] != strict_json((trace / "manifest.json").read_bytes()):
+        raise ValueError("Trial manifest differs from recorded identity")

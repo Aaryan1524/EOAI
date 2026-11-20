@@ -22,16 +22,18 @@ UNCHANGED_TABLES = (
 )
 
 
-def _load_run(trace):
+def _load_run(trace, expected):
     path = trace / "trace.jsonl" if trace.is_dir() else trace
     report = json.loads(path.with_name("final_output.json").read_text(encoding="utf-8"))
     manifest = json.loads(path.with_name("manifest.json").read_text(encoding="utf-8"))
+    inputs = json.loads(path.with_name("input.json").read_text(encoding="utf-8"))
     events = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()]
     calls = [event for event in events if event["event"] == "tool"]
     ordinals_valid = [event["ordinal"] for event in events] == list(range(1, len(events) + 1))
     identifiers = [call["response"]["meta"]["call_id"] for call in calls]
     trace_identity = (
         ordinals_valid and len(identifiers) == len(set(identifiers))
+        and inputs["tenant_id"] == expected["tenant_id"] and inputs["user_id"] == expected["actor_id"]
         and all(report[key] == manifest[key] for key in ("run_id", "task_id", "as_of"))
         and all(
             call["response"]["meta"]["profile"] == manifest["profile"]
@@ -82,6 +84,10 @@ def _expected_decision_matches(decision, expected):
     )
 
 
+def _normalized_query(value):
+    return " ".join(value.casefold().split())
+
+
 def _completed_searches(calls, tool):
     """Reconstruct completed page chains by public arguments and state revision."""
     pending = {}
@@ -95,13 +101,18 @@ def _completed_searches(calls, tool):
             size = args.get("limit", args.get("page_size", 10))
             cursor = args.get("cursor", args.get("page_cursor"))
         else:
-            query = args["query"].strip().casefold()
+            query = _normalized_query(args["query"])
             statuses = ()
             size = args.get("limit", 10)
             cursor = args.get("cursor")
         key = (query, statuses, size, revision)
         data = _data(call)
-        ids = [item["id"] for item in data["items"]]
+        ids = [
+            item["id"] for item in data["items"]
+            if tool == "invoice.search" or (
+                item["match_kind"] == "exact" and _normalized_query(item["legal_name"]) == query
+            )
+        ]
         if cursor is not None:
             previous = pending.pop(key, None)
             if previous is None:
@@ -110,7 +121,7 @@ def _completed_searches(calls, tool):
         if data["next_cursor"] is not None:
             pending[key] = ids
         elif len(ids) == len(set(ids)):
-            completed.append((query, statuses, set(ids)))
+            completed.append((query, statuses, size, set(ids)))
     return completed
 
 
@@ -147,14 +158,16 @@ def _invoice_results(report, calls, expected):
     evidence = {row["id"]: row for row in report["evidence"]}
     statuses = tuple(sorted(expected.get("invoice_statuses", [])))
     required_search = expected.get("invoice_search_required", True)
+    page_size = expected.get("invoice_page_size")
     invoice_search = any(
         customer == customer_id and filters == statuses and ids == expected_coverage
-        for customer, filters, ids in _completed_searches(calls, "invoice.search")
+        and (page_size is None or limit == page_size)
+        for customer, filters, limit, ids in _completed_searches(calls, "invoice.search")
     )
     customer_query = expected.get("customer_query")
     customer_search = any(
-        customer_id in ids and (customer_query is None or customer_query.strip().casefold() == query)
-        for query, _, ids in _completed_searches(calls, "customer.search")
+        ids == {customer_id} and (customer_query is None or _normalized_query(customer_query) == query)
+        for query, _, _, ids in _completed_searches(calls, "customer.search")
     )
 
     matched = []
@@ -265,7 +278,7 @@ def _report_result(report, calls, expected):
 
 def score_report(trace: Path, expected: dict) -> dict:
     """Report-only diagnostic for archives without both SQLite files."""
-    report, _, calls, trace_identity = _load_run(trace)
+    report, _, calls, trace_identity = _load_run(trace, expected)
     result = _report_result(report, calls, expected)
     result["checks"]["trace_identity"] = trace_identity
     result["checks"]["sqlite_verified"] = False
@@ -452,26 +465,25 @@ def _write_results(seed, run, calls, report, expected, manifest):
         (data["invoice_id"], data["result_id"], data["audit_id"]) in commit_results
         for data in map(_data, _calls_for(calls, "ticket.create"))
     ) and not _calls_for(calls, "approval.request")
-    completed = [
-        row for row in report["actions"]
-        if row["status"] in {"completed", "already_active"} or row["confirmed_by_readback"]
-    ]
-    action_ids = [row["invoice_id"] for row in completed]
+    actions = report["actions"]
+    action_ids = [row["invoice_id"] for row in actions]
     existing_actions = expected_existing if expected.get("require_existing_actions", True) else {}
     actions_match = Counter(action_ids) == Counter((*expected_tickets, *existing_actions))
-    for row in completed:
+    for row in actions:
         invoice_id = row["invoice_id"]
         if row["status"] == "already_active":
             result_id = existing_actions.get(invoice_id)
             matches = (
                 result_id is not None and row["result_id"] == result_id
                 and row["audit_id"] is None and row["confirmed_by_readback"] is False
+                and row["reason_codes"] == ["ACTIVE_TICKET_EXISTS"]
                 and _observed_existing(result_id, invoice_id, calls)
             )
         else:
             matches = (
                 invoice_id in expected_tickets and invoice_id in checked
                 and row["status"] == "completed" and row["confirmed_by_readback"] is True
+                and row["reason_codes"] == [expected_tickets[invoice_id]["reason_code"]]
                 and (row["result_id"], row["audit_id"]) == checked[invoice_id]
             )
         actions_match = actions_match and matches and row["type"] == TICKET_ACTION
@@ -529,7 +541,7 @@ def score(snapshot: Path, database: Path, trace: Path, expected: dict) -> dict:
         _projection(decision, ("decision", "reason_codes"))
     for ticket in expected["new_tickets"].values():
         _projection(ticket, ("status", "reason_code"))
-    report, manifest, calls, trace_identity = _load_run(trace)
+    report, manifest, calls, trace_identity = _load_run(trace, expected)
     result = _report_result(report, calls, expected)
     checks, detail = _write_results(_rows(snapshot), _rows(database), calls, report, expected, manifest)
     result["checks"].update(checks)

@@ -13,7 +13,10 @@ from enterprise_ops.agent.runner import RunLimits
 from enterprise_ops.sandbox import seed_snapshot
 
 from .datasets import load_adaptation, load_gate, load_heldout, validate_disjoint
-from .execution import TrialConfig, fixed_conditions, load_variant, run_trial, runtime_identity, source_identity
+from .execution import (
+    TrialConfig, fixed_conditions, load_variant, run_trial, runtime_identity, source_identity,
+    verify_trial_artifacts,
+)
 from .scoring import score
 
 
@@ -51,6 +54,9 @@ def _evaluate(args: argparse.Namespace) -> None:
     harness = load_variant(args.harness)
     if args.split == "heldout" and harness.digest != args.harness_digest:
         raise ValueError("Harness digest differs from the preregistered digest")
+    arms = {"selected": harness} if args.split != "heldout" else {
+        "baseline": load_variant(None), "candidate": harness,
+    }
     model = OllamaModel(args.model, args.endpoint)
     runtime = runtime_identity(model)
     args.out.mkdir(mode=0o700)
@@ -67,35 +73,46 @@ def _evaluate(args: argparse.Namespace) -> None:
         )
         config = TrialConfig(args.model_digest, limits, source, runtime)
         condition = None
-        trials = []
-        for trial_number in range(1, args.trials + 1):
-            result = run_trial(
-                config, model, harness, snapshot, case.task, case.faults,
-                run_id=f"case-{case_index}-trial-{trial_number}", root=args.out, scenario=case.scenario,
-            )
-            provenance = strict_json((result.trace_path / "experiment.json").read_bytes())
-            current = fixed_conditions(provenance)
-            if condition is not None and current != condition:
-                raise ValueError("Fixed experiment conditions changed across trials")
-            condition = current
-            report = score(snapshot.path, result.sandbox.path, result.trace_path, case.expectations)
-            _write(result.trace_path / "evaluation.json", report)
-            trials.append({
-                "run_key": result.trace_path.name,
-                "passed": report["passed"],
-                "semantic_outcome": report["semantic_outcome"],
-            })
+        arm_reports = {}
+        for arm, content in arms.items():
+            if runtime_identity(model) != runtime:
+                raise ValueError("The runtime changed before the next arm")
+            trials = []
+            for trial_number in range(1, args.trials + 1):
+                result = run_trial(
+                    config, model, content, snapshot, case.task, case.faults,
+                    run_id=f"case-{case_index}-{arm}-trial-{trial_number}", root=args.out,
+                    scenario=case.scenario,
+                )
+                provenance = strict_json((result.trace_path / "experiment.json").read_bytes())
+                verify_trial_artifacts(result.trace_path, result.sandbox.path, provenance)
+                current = fixed_conditions(provenance)
+                if condition is not None and current != condition:
+                    raise ValueError("Fixed experiment conditions changed across arms or trials")
+                condition = current
+                report = score(snapshot.path, result.sandbox.path, result.trace_path, case.expectations)
+                _write(result.trace_path / "evaluation.json", report)
+                trials.append({
+                    "run_key": result.trace_path.name,
+                    "passed": report["passed"],
+                    "semantic_outcome": report["semantic_outcome"],
+                })
+            arm_reports[arm] = {
+                "semantic_outcomes_match": all(
+                    item["semantic_outcome"] == trials[0]["semantic_outcome"] for item in trials
+                ),
+                "trials": trials,
+            }
         reports.append({
             "case_id": case.id,
             "task_id": case.task.id,
-            "semantic_outcomes_match": all(
-                item["semantic_outcome"] == trials[0]["semantic_outcome"] for item in trials
-            ),
-            "trials": trials,
+            "arms": arm_reports,
         })
     _write(args.out / "evaluation.json", {
         "split": args.split, "suite_digest": suite.digest, "cases": reports,
-        "source": source, "runtime": runtime, "harness_digest": harness.digest,
+        "source": source, "runtime": runtime, "harness_digests": {
+            arm: content.digest for arm, content in arms.items()
+        },
     })
 
 
@@ -106,7 +123,7 @@ def main() -> int:
         command = commands.add_parser(split)
         command.set_defaults(case=None)
         command.add_argument("--out", type=Path, required=True)
-        command.add_argument("--harness", type=Path)
+        command.add_argument("--harness", type=Path, required=split == "heldout")
         command.add_argument("--model", default="qwen3:4b-instruct")
         command.add_argument("--endpoint", default="http://127.0.0.1:11434")
         command.add_argument("--model-digest", required=True)

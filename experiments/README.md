@@ -45,7 +45,9 @@ Use a trusted checkout to run the evaluator. Load the candidate bundle as data;
 the improvement checkout is never an import path. Pin the suite digest,
 evaluator and runner source digests, commit, model digest, harness digest, and
 execution limits in the study record before opening the sealed suite. The
-`heldout --help` command lists the required options. The held-out command saves
+`heldout --help` command lists the required options. Both held-out arms run
+within one invocation and share the same model, snapshot, tool configuration,
+limits, and trial count. The held-out command saves
 all reports under the private suite directory. Its caller must be the evaluator
 account. Keep scores and logs private until both arms and the improvement
 process are closed.
@@ -55,4 +57,13 @@ role cannot read private input, answers, traces or scores, list their directory,
 or invoke the evaluator. Run that probe against the deployed accounts and
 service boundary using canary data. The repository tests verify the application
 boundary and fail-closed permission checks. Provisioning a private suite and
-testing its real deployment are separate readiness checks.
+testing its real deployment are separate readiness checks. The current command
+runs the trusted EOAI host runner within the evaluator process. The model
+receives its normal task and tool messages. A process-level boundary between
+private answers and the solver runner requires a separate deployment and access
+verification.
+
+The initial rubric covers ticket creation, invoice inventory and review for an
+identified account. Use cases supported by the rubric when preparing the sealed
+pilot. Approval writes and tasks whose correct result has no resolved customer
+are outside this rubric.

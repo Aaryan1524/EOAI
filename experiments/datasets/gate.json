@@ -151,7 +151,8 @@
           }
         ],
         "status": "partial",
-        "review_required": true
+        "review_required": true,
+        "invoice_page_size": 3
       }
     }
   ]

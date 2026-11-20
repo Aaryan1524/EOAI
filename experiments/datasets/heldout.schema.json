@@ -176,6 +176,20 @@
           "title": "Existing Tickets",
           "type": "object"
         },
+        "invoice_page_size": {
+          "anyOf": [
+            {
+              "maximum": 25,
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Invoice Page Size"
+        },
         "invoice_search_required": {
           "default": true,
           "title": "Invoice Search Required",

@@ -384,7 +384,8 @@
         },
         "require_customer_search_exhausted": true,
         "customer_query": "Acme Property Group",
-        "require_existing_actions": false
+        "require_existing_actions": false,
+        "invoice_page_size": 3
       }
     }
   ]

@@ -23,7 +23,7 @@ from enterprise_ops.fixtures.catalog import load_task
 from enterprise_ops.fixtures.seed import seed_scenario
 from enterprise_ops.sandbox import FaultKind, FaultPlan, FaultStep, Snapshot
 from enterprise_ops.storage.sqlite import connect, initialize
-from enterprise_ops.tools.contracts import Id, StrictModel
+from enterprise_ops.tools.contracts import Id, PageSize, StrictModel
 from enterprise_ops.tools.session import WriteScope
 
 
@@ -82,6 +82,7 @@ class _Expectations(StrictModel):
     missing_information: list[_MissingInformation] = Field(default_factory=list)
     require_customer_search_exhausted: bool = False
     invoice_search_required: bool = True
+    invoice_page_size: PageSize | None = None
     invoice_statuses: list[str] = Field(default_factory=list)
     coverage_invoice_ids: list[Id] = Field(default_factory=list)
     require_existing_actions: bool = True
@@ -222,10 +223,10 @@ def _case_keys(case: Case) -> tuple[list[tuple[str, str]], list[tuple[str, str]]
     }
     if case.task.customer_query is not None:
         assignment["customer_query"] = _normalize(case.task.customer_query)
-    unique = [("case ID", case.id), ("task assignment", _hash(assignment))]
+    unique = [("case ID", case.id.casefold()), ("task assignment", _hash(assignment))]
     if case.catalog_task is not None:
         unique.append(("catalog task", case.catalog_task))
-    shared = [("fixture lineage", case.lineage), ("snapshot contents", case.snapshot_fingerprint)]
+    shared = [("fixture lineage", _normalize(case.lineage)), ("snapshot contents", case.snapshot_fingerprint)]
     return unique, shared
 
 
@@ -375,7 +376,7 @@ def _private_root(root: Path, improvement_root: Path) -> Path:
         info = root.stat()
         if not stat.S_ISDIR(info.st_mode) or info.st_uid != os.geteuid() or info.st_mode & 0o077:
             raise DatasetError("Held-out storage must be custodian-owned and private")
-    except OSError:
+    except (OSError, RuntimeError):
         raise DatasetError("Held-out storage boundary cannot be verified") from None
     return root
 
@@ -403,9 +404,7 @@ def _private_file(root: Path, filename: str) -> Path:
     return path
 
 
-def _read[M](
-    path: Path, schema: type[M],
-) -> M:
+def _read[M](path: Path, schema: type[M]) -> M:
     try:
         value = strict_json(path.read_bytes())
         if not isinstance(value, dict) or type(value.get("schema_version")) is not int:
