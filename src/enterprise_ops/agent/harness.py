@@ -22,6 +22,38 @@ class Harness:
     digest: str
 
 
+@dataclass(frozen=True)
+class HarnessContent:
+    """The complete editable surface of an experimental harness."""
+
+    instructions: str
+    skills: str = ""
+    memory: str = ""
+
+    def __post_init__(self) -> None:
+        for name, value in self.as_dict().items():
+            if type(value) is not str or len(value.encode("utf-8")) > 32_768:
+                raise ValueError(f"Invalid harness text: {name}")
+        if not self.instructions.strip():
+            raise ValueError("Harness instructions must not be empty")
+
+    def as_dict(self) -> dict[str, str]:
+        return {"instructions": self.instructions, "skills": self.skills, "memory": self.memory}
+
+    @property
+    def digest(self) -> str:
+        content = json.dumps(self.as_dict(), sort_keys=True, ensure_ascii=False)
+        return sha256(content.encode("utf-8")).hexdigest()
+
+    def render(self) -> str:
+        sections = [self.instructions]
+        if self.skills:
+            sections.append(f"## Skills\n{self.skills}")
+        if self.memory:
+            sections.append(f"## Memory\n{self.memory}")
+        return "\n\n".join(sections)
+
+
 def harness_versions() -> tuple[str, ...]:
     return tuple(_MANIFEST_DIGESTS)
 

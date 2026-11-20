@@ -5,7 +5,7 @@ from dataclasses import replace
 import pytest
 
 from enterprise_ops.agent.handles import ToolHandles
-from enterprise_ops.agent.harness import load_harness
+from enterprise_ops.agent.harness import HarnessContent, load_harness
 from enterprise_ops.agent.model import ModelError, ModelTurn, ToolCall
 from enterprise_ops.agent.runner import RunLimits, RunTask, run_task
 from enterprise_ops.domain.entities import Capability, Principal
@@ -78,22 +78,52 @@ def _run(path, task, steps, **kwargs):
         snapshot, task, ScriptModel(steps), runs_root=path / "runs", run_id="smoke", **kwargs,
     )
 
-def test_v3_reminds_model_about_eligible_invoice_left_unhandled(tmp_path):
+def test_harness_variants_share_runner_configuration_and_feedback(tmp_path):
     def assess_remaining(context):
         assert context["invoice_ids"] == "INV-104"
         return {"invoice_id": "INV-104"}
 
-    result = _run(tmp_path, _assignment(), [
-        ("invoice.get", {"invoice_id": "INV-104"}),
-        ("invoice.assess", {"invoice_id": "INV-104"}),
-        '{"customer_id":"acme","review_reason":null}',
-        ("invoice.assess", assess_remaining),
-        ("ticket.preview_create", _preview),
-        ("ticket.create", _commit),
-        '{"customer_id":"acme","review_reason":null}',
-    ], harness=load_harness("v3"))
-    assert result.output.status == "resolved"
-    assert result.output.actions[0].confirmed_by_readback
+    def correct_cursor(context):
+        assert "Repeat its original arguments exactly" in context["runtime_feedback"]
+        return {"invoice_id": "INV-104"}
+
+    class CapturingModel(ScriptModel):
+        def turn(self, **kwargs):
+            observations.append((kwargs["instructions"], kwargs["declarations"], kwargs["max_output_tokens"]))
+            return super().turn(**kwargs)
+
+    snapshot = seed_snapshot(tmp_path / "snapshots", "baseline")
+    variants = [load_harness(version) for version in ("v1", "v2", "v3")]
+    variants.append(HarnessContent("Check evidence", "Skill example", "Memory example"))
+    configs = []
+    instructions = []
+    for index, harness in enumerate(variants):
+        observations = []
+        model = CapturingModel([
+            ("invoice.search", {"customer_id": "acme", "cursor": "invalid"}),
+            ("invoice.get", correct_cursor),
+            ("invoice.assess", {"invoice_id": "INV-104"}),
+            '{"customer_id":"acme","review_reason":null}',
+            ("invoice.assess", assess_remaining),
+            ("ticket.preview_create", _preview),
+            ("ticket.create", _commit),
+            '{"customer_id":"acme","review_reason":null}',
+        ])
+        result = run_task(
+            snapshot, _assignment(), model, runs_root=tmp_path / "runs",
+            run_id=f"invariant-{index}", harness=harness, limits=RunLimits(deadline_seconds=60),
+        )
+        assert result.output.status == "resolved"
+        assert result.output.actions[0].confirmed_by_readback
+        manifest = json.loads((result.trace_path / "manifest.json").read_text())
+        configs.append((
+            {key: value for key, value in manifest.items() if key not in {"harness", "run_id", "sandbox_id"}},
+            [(declarations, budget) for _, declarations, budget in observations],
+        ))
+        instructions.append(observations[0][0])
+    assert all(config == configs[0] for config in configs)
+    assert len(set(instructions)) == len(variants)
+    assert instructions[-1] == "Check evidence\n\n## Skills\nSkill example\n\n## Memory\nMemory example"
 
 
 def test_run_verifies_ticket_before_claiming_completion(tmp_path):
@@ -196,6 +226,7 @@ def test_rejected_tool_arguments_cannot_leak_preview_or_break_trace(tmp_path):
         ("invoice.assess", {"invoice_id": "INV-104"}),
         ("ticket.preview_create", _preview),
         ("invoice.get", corrupt),
+        '{"customer_id":"acme","review_reason":null}',
         '{"customer_id":"acme","review_reason":null}',
         '{"customer_id":"acme","review_reason":null}',
     ])
@@ -329,6 +360,7 @@ def test_duplicate_confirmation_keys_cannot_commit_a_preview(tmp_path):
         ("ticket.preview_create", _preview),
         '{"customer_id":"acme","review_reason":null}',
         '{"submit_preview":false,"submit_preview":true}',
+        '{"customer_id":"acme","review_reason":null}',
         '{"customer_id":"acme","review_reason":null}',
     ])
     assert result.output.status == "partial"
