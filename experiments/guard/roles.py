@@ -27,9 +27,9 @@ _SEED_COUNT = 2**31
 _MAX_INSTRUCTION_BYTES = 16 * 1024
 _MAX_PAYLOAD_BYTES = 128 * 1024
 _EDIT_FIELDS = {
-    "condition": {"type": "string", "minLength": 4, "maxLength": 250},
-    "rule": {"type": "string", "minLength": 1, "maxLength": 2000},
-    "why": {"type": "string", "minLength": 1, "maxLength": 900},
+    "condition": {"type": "string"},
+    "rule": {"type": "string"},
+    "why": {"type": "string"},
 }
 
 
