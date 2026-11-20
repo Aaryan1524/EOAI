@@ -278,7 +278,7 @@ class _Run:
                 action.invoice_id for action in result.actions
                 if action.type == "create_escalation_ticket" and action.status == "not_attempted"
             ]
-            return self.feedback(
+            return bool(remaining) and self.feedback(
                 transcript, "ESCALATION_INCOMPLETE",
                 "Eligible invoices still need an action. Check for an active ticket or preview "
                 "creation using the current assessment evidence. Submit a ready preview if appropriate.",
