@@ -2,6 +2,7 @@
 
 import json
 import subprocess
+from collections.abc import Callable
 from hashlib import sha256
 from itertools import count
 from pathlib import Path
@@ -17,10 +18,10 @@ _PURPOSES = {
         {"request", "public_context", "tool_declarations", "deterministic_criteria", "semantic_options"}, 512,
     ),
     ("reviewer", "criterion"): (
-        {"request", "public_context", "tool_names", "criterion", "evidence"}, 256,
+        {"request", "public_context", "tool_names", "criterion", "evidence"}, 512,
     ),
-    ("candidate-generator", "distill"): ({"strategy", "incumbent", "regret"}, 2048),
-    ("distiller", "repair"): ({"incumbent", "candidate", "gate", "regret"}, 2048),
+    ("candidate-generator", "distill"): ({"strategy", "incumbent", "regret", "tool_declarations"}, 2048),
+    ("distiller", "repair"): ({"incumbent", "candidate", "gate", "regret", "tool_declarations"}, 2048),
     ("distiller", "contrast"): ({"best", "worst"}, 2048),
 }
 _SEED_COUNT = 2**31
@@ -48,8 +49,16 @@ def _role_format(purpose: str, payload: dict) -> dict:
         }
     else:
         fields = {
-            "passed": {"type": "boolean"}, "why": {"type": "string"},
-            "evidence": {"type": "array", "items": {"type": "string"}},
+            "verdict": {"type": "string", "enum": ["PASS", "FAIL", "UNKNOWN"]},
+            "why": {"type": "string"},
+            "evidence": {"type": "array", "items": {
+                "type": "object", "required": ["key", "quote", "finding"], "additionalProperties": False,
+                "properties": {
+                    "key": {"type": "string"},
+                    "quote": {"type": "string"},
+                    "finding": {"type": "string", "enum": ["SUPPORTS", "CONTRADICTS"]},
+                },
+            }},
         }
     return {"type": "object", "required": sorted(fields), "additionalProperties": False, "properties": fields}
 
@@ -164,6 +173,7 @@ class RoleModel:
 
     def __call__(
         self, role: str, purpose: str, instruction: str, payload: dict, temperature: float,
+        *, record_raw: Callable[[str | None], None] | None = None,
     ) -> dict:
         start = monotonic()
         deadline = start + self._timeout
@@ -228,6 +238,13 @@ class RoleModel:
                 self._check_digest(deadline)
                 metrics["status"] = "provider_failed"
                 response = self._model._request("POST", "/api/chat", deadline - monotonic(), body)
+                message = response.get("message")
+                content = message.get("content") if isinstance(message, dict) else None
+                raw_reply = content if isinstance(content, str) else None
+                if role == "reviewer":
+                    metrics["raw_reply"] = raw_reply
+                if record_raw is not None:
+                    record_raw(raw_reply)
                 for source, target in (("prompt_eval_count", "input_tokens"), ("eval_count", "output_tokens")):
                     tokens = response.get(source)
                     if type(tokens) is int and tokens >= 0:
@@ -235,16 +252,20 @@ class RoleModel:
                 metrics["status"] = "model_identity_failed"
                 self._check_digest(deadline)
 
-                message = response.get("message")
                 assistant = (
                     {key: message[key] for key in ("role", "content", "tool_calls") if key in message}
                     if isinstance(message, dict) else None
                 )
                 metrics["status"] = "invalid_response"
-                result = self._sandbox(role, area, {
-                    "operation": "validate", "message": assistant,
-                    "done": response.get("done"), "done_reason": response.get("done_reason"),
-                }, deadline)
+                try:
+                    result = self._sandbox(role, area, {
+                        "operation": "validate", "message": assistant,
+                        "done": response.get("done"), "done_reason": response.get("done_reason"),
+                    }, deadline)
+                except ValueError as error:
+                    if role == "reviewer":
+                        metrics["response_parse_error"] = str(error)
+                    raise
                 if not isinstance(result, dict):
                     raise ValueError("Expected role JSON object")
                 metrics["response_sha256"] = sha256(_json(result).encode()).hexdigest()

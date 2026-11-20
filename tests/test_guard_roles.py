@@ -12,7 +12,7 @@ from experiments.guard import roles
 
 
 _DIGEST = "a" * 64
-_REQUEST = {"strategy": "scope every rule", "incumbent": "existing policy", "regret": {}}
+_REQUEST = {"strategy": "scope every rule", "incumbent": "existing policy", "regret": {}, "tool_declarations": []}
 
 
 @pytest.fixture

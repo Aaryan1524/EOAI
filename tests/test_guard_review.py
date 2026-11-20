@@ -26,7 +26,8 @@ def _reviewer(role, purpose, instruction, payload, temperature):
     assert purpose == "criterion"
     assert set(payload) == {"request", "public_context", "tool_names", "criterion", "evidence"}
     assert "rendered_instructions" not in json.dumps(payload)
-    return {"passed": True, "why": "The final coverage identifies the account.", "evidence": ["output.coverage"]}
+    return {"verdict": "PASS", "why": "The final coverage identifies the account.",
+            "evidence": [{"key": "output.coverage", "quote": "acme", "finding": "SUPPORTS"}]}
 
 
 def _prepare(tmp_path, task, scenario="baseline"):
@@ -59,7 +60,7 @@ def test_guard_review_checks_v2_pagination_and_never_reads_expected_answers(tmp_
         ("invoice.search", {"account_ref": "acme", "page_size": 2}),
         ("invoice.search", page), ("invoice.search", page), ("invoice.search", page), FINAL,
     ])
-    review = review_rollout(checklist, result, snapshot.path, _reviewer)
+    review = review_rollout(checklist, result, snapshot.path, _reviewer, task=task)
     assert result.output.coverage.invoice_search_exhausted
     assert all(_verdicts(review).values()), review
     assert review.strict == review.continuous == 100
@@ -69,7 +70,7 @@ def test_guard_review_checks_v2_pagination_and_never_reads_expected_answers(tmp_
     calls = [row for row in rows if row["event"] == "tool"]
     calls[1]["arguments"].pop("page_cursor")
     trace_path.write_text("".join(json.dumps(row) + "\n" for row in rows))
-    review = review_rollout(checklist, result, snapshot.path, _reviewer)
+    review = review_rollout(checklist, result, snapshot.path, _reviewer, task=task)
     assert not _verdicts(review)["eoai_invoice_coverage"]
     assert review.strict == review.continuous / 2
 
@@ -82,13 +83,13 @@ def test_guard_checks_actual_database_and_exact_commit_receipt_readback(tmp_path
         ("invoice.assess", {"invoice_id": "INV-104"}),
         ("ticket.preview_create", _preview), ("ticket.create", _commit), FINAL,
     ], faults=FaultPlan((FaultStep("ticket.create", 1, FaultKind.LOSE_RESPONSE),)))
-    review = review_rollout(checklist, result, snapshot.path, _reviewer)
+    review = review_rollout(checklist, result, snapshot.path, _reviewer, task=task)
     assert all(_verdicts(review).values()), review
     assert review.strict == 100
 
     with closing(connect(result.sandbox.path)) as db:
         db.execute("UPDATE escalation_tickets SET reason_code = 'OTHER_REASON'")
-    review = review_rollout(checklist, result, snapshot.path, _reviewer)
+    review = review_rollout(checklist, result, snapshot.path, _reviewer, task=task)
     assert not _verdicts(review)["eoai_scoped_audit"]
 
 
@@ -98,7 +99,7 @@ def test_guard_read_only_compares_sqlite_instead_of_trusting_empty_audit(tmp_pat
     result = _run(tmp_path, snapshot, task, [("invoice.search", {"customer_id": "acme"}), FINAL])
     with closing(connect(result.sandbox.path)) as db:
         db.execute("UPDATE invoices SET total_minor = total_minor + 1 WHERE id = 'INV-104'")
-    review = review_rollout(checklist, result, snapshot.path, _reviewer)
+    review = review_rollout(checklist, result, snapshot.path, _reviewer, task=task)
     assert _verdicts(review)["eoai_invoice_coverage"]
     assert not _verdicts(review)["eoai_read_only"]
 
@@ -114,8 +115,9 @@ def test_invalid_semantic_verdict_fails_closed(tmp_path, verdict):
     checklist, snapshot = _prepare(tmp_path, task)
     result = _run(tmp_path, snapshot, task, [("invoice.search", {"customer_id": "acme"}), FINAL])
     review = review_rollout(checklist, result, snapshot.path, lambda *args: verdict)
-    assert not _verdicts(review)["req_1"]
-    assert review.strict == review.continuous / 2
+    assert _verdicts(review)["req_1"] is None
+    assert len(review.criteria[-1].semantic_attempts) == 2
+    assert review.strict == review.continuous == 100
 
 
 def test_blocking_runtime_error_applies_zero_strict_score(tmp_path):
@@ -124,7 +126,7 @@ def test_blocking_runtime_error_applies_zero_strict_score(tmp_path):
     result = _run(tmp_path, snapshot, task, [
         ("invoice.search", {"customer_id": "acme"}), ModelError("provider unavailable"),
     ])
-    review = review_rollout(checklist, result, snapshot.path, _reviewer)
+    review = review_rollout(checklist, result, snapshot.path, _reviewer, task=task)
     assert review.blocking_error and review.continuous > 0 and review.strict == 0
     assert not _verdicts(review)["eoai_clean_execution"]
 

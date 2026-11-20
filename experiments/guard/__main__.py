@@ -159,7 +159,7 @@ def run(out: Path, policy: Policy, *, role_timeout: float = 90.0, sampling_seed:
                     if provenance["run"]["harness"]["digest"] != harness.digest:
                         raise ValueError("Worker did not render the selected harness")
                     summary = _read(path / "summary.json")
-                    review = review_rollout(checklists[name], trial, snapshots[name].path, roles)
+                    review = review_rollout(checklists[name], trial, snapshots[name].path, roles, task=entry.task)
                     record = Trajectory(
                         name, path.name, tuple(Verdict(row.id, row.passed, row.why) for row in review.criteria),
                         review.blocking_error is not None,
@@ -174,7 +174,17 @@ def run(out: Path, policy: Policy, *, role_timeout: float = 90.0, sampling_seed:
 
         descriptions = {name: {item.id: item.description for item in checklist.criteria}
                         for name, checklist in checklists.items()}
-        result = run_rounds(out, baseline, TRAINING, REPLAY, descriptions, solve, roles, policy)
+        declarations = tuple(
+            declaration for profile in sorted({entry.profile for entry in entries.values()})
+            for declaration in declarations_for_profile(profile)
+        )
+        identities = tuple(
+            identity for entry in entries.values()
+            for identity in (entry.task.account, entry.task.customer_query, *(entry.task.assigned_invoices or ()))
+            if identity
+        )
+        result = run_rounds(out, baseline, TRAINING, REPLAY, descriptions, solve, roles, policy,
+                            declarations=declarations, forbidden=identities)
         # Independent repeat after the decision. It cannot feed back into optimization.
         final_path = out / "harnesses" / f"{result['final']}.json"
         final = baseline if result["final"] == result["baseline"] else HarnessContent(**_read(final_path))

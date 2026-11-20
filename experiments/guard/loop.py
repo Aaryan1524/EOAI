@@ -4,15 +4,18 @@ import json
 import re
 from collections.abc import Callable, Mapping, Sequence
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from difflib import unified_diff
 from pathlib import Path
 
 from enterprise_ops.agent.harness import Harness, HarnessContent
 from enterprise_ops.agent.model import strict_json
+from enterprise_ops.tools.gateway import declarations_for_profile
+
+from .grounding import compact_declarations, validate_rule
 
 from .math import (
-    TrajectoryScore, Verdict, average_scores, candidate_fitness, rank_criteria, score_trajectory,
+    GateDecision, GateReason, TrajectoryScore, Verdict, average_scores, candidate_fitness, rank_criteria, score_trajectory,
     soft_hurt_gate, trajectory_contrast,
 )
 
@@ -28,8 +31,10 @@ DISTILL = (
     "Propose one appended mechanism. Return field, condition, rule, and why as strings. "
     "Choose instructions, skills, or memory for field. Write a short observable condition without brackets. "
     "Write the rule to apply only under that condition. The controller supplies the [iff] wrapper. "
-    "Use no executable code. Do not hard-code case IDs, reference outcomes, or tool results."
+    "Use only observable solver conditions and exact declared tool fields. Do not copy case names, "
+    "entity IDs, evaluation feedback, or expected outcomes. Use plain text and no executable code."
 )
+_DEFAULT_DECLARATIONS = tuple(declarations_for_profile("enterprise_ops:v1"))
 
 
 @dataclass(frozen=True)
@@ -53,7 +58,9 @@ class Edit:
         return edit
 
     @classmethod
-    def from_proposal(cls, value: dict, repair_of: "Edit | None" = None) -> "Edit":
+    def from_proposal(cls, value: dict, repair_of: "Edit | None" = None, *,
+                      declarations: Sequence[dict] = _DEFAULT_DECLARATIONS,
+                      forbidden: Sequence[str] = ()) -> "Edit":
         fields = {"condition", "rule", "why"}
         if repair_of is None:
             fields.add("field")
@@ -63,6 +70,10 @@ class Edit:
         rule = value["rule"].strip()
         if not rule or not re.fullmatch(r"[^\[\]\n]{4,250}", condition):
             raise ValueError("Proposal requires a bounded condition and nonempty rule")
+        for text in (condition, rule):
+            error = validate_rule(text, declarations, forbidden=forbidden)
+            if error:
+                raise ValueError(error)
         return cls.parse({
             "field": value["field"] if repair_of is None else repair_of.field,
             "old": "" if repair_of is None else repair_of.new.strip(),
@@ -159,8 +170,47 @@ def paired_scores(batch: Batch, tasks: tuple[str, ...]) -> dict[str, TrajectoryS
     return {task: average_scores([run.score for run in batch[task]]) for task in tasks}
 
 
+def _reliable_pair(candidate: Batch, incumbent: Batch, tasks: tuple[str, ...]) -> bool:
+    for task in tasks:
+        before, after = incumbent[task], candidate[task]
+        if not before or len(before) != len(after):
+            return False
+        expected = {row.criterion_id for row in before[0].verdicts}
+        if any({row.criterion_id for row in run.verdicts} != expected or
+               any(not _is_grade(row) for row in run.verdicts) for run in (*before, *after)):
+            return False
+    return True
+
+
+def promotion_gate(candidate: Batch, incumbent: Batch, tasks: tuple[str, ...], policy: Policy,
+                   *, repaired: bool = False) -> GateDecision:
+    """Apply EOAI evidence preconditions around the paper's numerical gate."""
+    complete = all(
+        row.passed is True for task in tasks for run in candidate[task] for row in run.verdicts
+        if row.criterion_id == "eoai_required_action_completion"
+    )
+    if not _reliable_pair(candidate, incumbent, tasks):
+        reasons = (GateReason.UNRELIABLE_REVIEW,)
+        if not complete:
+            reasons += (GateReason.REQUIRED_ACTION_INCOMPLETE,)
+        return GateDecision(False, False, (), (), None, None, None, reasons)
+    gate = soft_hurt_gate(
+        paired_scores(candidate, tasks), paired_scores(incumbent, tasks),
+        noise_floor=policy.noise_floor, max_hurt=policy.max_hurt, min_gain=policy.min_gain,
+        repair_budget=policy.repair_budget, repaired=repaired,
+    )
+    if not complete:
+        return replace(gate, promoted=False, repair_eligible=False,
+                       reasons=gate.reasons + (GateReason.REQUIRED_ACTION_INCOMPLETE,))
+    return gate
+
+
+def _is_grade(row: Verdict) -> bool:
+    return row.passed is not None and not row.rationale.startswith("Reviewer failed to return")
+
+
 def _paired_verdicts(batch: Batch | None, task: str):
-    return [run.verdicts for run in batch.get(task, ())] if batch is not None else ()
+    return [tuple(row for row in run.verdicts if _is_grade(row)) for run in batch.get(task, ())] if batch is not None else ()
 
 
 def _diagnostics(
@@ -169,6 +219,7 @@ def _diagnostics(
 ) -> dict:
     groups: dict[str, list[dict]] = {"regressed": [], "unsolved_gap": [], "mastered": []}
     contrasts = []
+    observations = []
     for task in tasks:
         current = _paired_verdicts(incumbent, task)
         earlier = _paired_verdicts(prior, task)
@@ -182,7 +233,9 @@ def _diagnostics(
                 "task": task, "requirement": descriptions[task][item.criterion_id],
                 "incumbent_failure_evidence": [reason[:280] for reason in rationales],
             })
-        runs = [run for batch in history[-5:] for run in batch.get(task, ())]
+        observations.extend({"task": task, "trace": run.excerpt} for run in incumbent[task][:2])
+        runs = [run for batch in history[-5:] for run in batch.get(task, ())
+                if all(_is_grade(row) for row in run.verdicts)]
         contrast = trajectory_contrast([run.score for run in runs])
         if contrast is not None:
             contrasts.append({
@@ -191,16 +244,21 @@ def _diagnostics(
                 "worse": runs[contrast.worst_index].excerpt,
             })
     for items in groups.values():
-        items.sort(key=lambda item: (-item["priority"], -item["hurt"], item["task"], item["criterion_id"]))
-    return {"criteria": groups, "contrasts": contrasts, "rejections": list(ledger)}
+        items.sort(key=lambda item: (-item["priority"], -item["hurt"], not item["criterion_id"].startswith("eoai_"),
+                                    item["task"], item["criterion_id"]))
+    return {"criteria": groups, "contrasts": contrasts, "observed_incumbent_traces": observations,
+            "contrast_note": "No qualifying contrasting observations are available." if not contrasts else None,
+            "rejections": list(ledger)}
 
 
-def _proposal(model: Complete, incumbent: HarnessContent, strategy: str, regret: dict) -> tuple[HarnessContent, Edit]:
-    payload = {"strategy": strategy, "incumbent": incumbent.as_dict(), "regret": regret}
+def _proposal(model: Complete, incumbent: HarnessContent, strategy: str, regret: dict,
+              tools: Sequence[dict], forbidden: Sequence[str]) -> tuple[HarnessContent, Edit]:
+    payload = {"strategy": strategy, "incumbent": incumbent.as_dict(), "regret": regret, "tool_declarations": tools}
     for attempt, temperature in enumerate((0.65, 0.85), start=1):
         try:
             instruction = DISTILL if attempt == 1 else DISTILL + " Use short, plain text in each field."
-            edit = Edit.from_proposal(model("candidate-generator", "distill", instruction, payload, temperature))
+            edit = Edit.from_proposal(model("candidate-generator", "distill", instruction, payload, temperature),
+                                      declarations=tools, forbidden=forbidden)
             return apply_edit(incumbent, edit), edit
         except ValueError as error:
             if attempt == 2:
@@ -209,15 +267,16 @@ def _proposal(model: Complete, incumbent: HarnessContent, strategy: str, regret:
 
 
 def _repair(model: Complete, incumbent: HarnessContent, winner: HarnessContent,
-            winning_edit: Edit, gate: dict, regret: dict):
+            winning_edit: Edit, gate: dict, regret: dict, tools: Sequence[dict], forbidden: Sequence[str]):
     value = model(
         "distiller", "repair",
         "Narrow the winning rule using the paired examples of the replay regression. Return exactly "
         "condition, rule and why as strings. The controller replaces the winning rule in its original field. "
         "Use a plain observable condition without brackets and no executable code.",
-        {"incumbent": incumbent.as_dict(), "candidate": winner.as_dict(), "gate": gate, "regret": regret}, 0.25,
+        {"incumbent": incumbent.as_dict(), "candidate": winner.as_dict(), "gate": gate,
+         "regret": regret, "tool_declarations": tools}, 0.25,
     )
-    edit = Edit.from_proposal(value, repair_of=winning_edit)
+    edit = Edit.from_proposal(value, repair_of=winning_edit, declarations=tools, forbidden=forbidden)
     return apply_edit(winner, edit), edit
 
 
@@ -262,9 +321,12 @@ def _artifact(root: Path, bundle: HarnessContent) -> str:
 def run_rounds(
     root: Path, baseline: Harness, training: tuple[str, ...], replay: tuple[str, ...],
     descriptions: Mapping[str, Mapping[str, str]], solve: Rollout, model: Complete, policy: Policy,
+    *, declarations: Sequence[dict] = _DEFAULT_DECLARATIONS, forbidden: Sequence[str] = (),
 ) -> dict:
     """Use only scored trajectories produced by self-review to decide promotions."""
     tasks = training + replay
+    tools = compact_declarations(declarations)
+    blocked_literals = (*tasks, *forbidden)
     if not training or len(set(tasks)) != len(tasks) or set(descriptions) != set(tasks):
         raise ValueError("Require disjoint training and replay tasks with frozen checklists")
     bundles = root / "harnesses"
@@ -283,14 +345,15 @@ def run_rounds(
         regret = _diagnostics(incumbent, prior, rejected, history, tasks, descriptions, ledger)
         write_json(root / f"{label}-regret.json", regret)
         with ThreadPoolExecutor(max_workers=policy.pool_size) as pool:
-            futures = [pool.submit(_proposal, model, current, prompt, regret) for prompt in prompts]
+            futures = [pool.submit(_proposal, model, current, prompt, regret, tools, blocked_literals)
+                       for prompt in prompts]
             proposals = [future.result() for future in futures]
         seen = rejected_artifacts.copy()
         for index, (bundle, _) in enumerate(proposals):
             for _ in range(2):
                 if bundle.digest not in seen:
                     break
-                proposals[index] = _proposal(model, current, prompts[index], regret)
+                proposals[index] = _proposal(model, current, prompts[index], regret, tools, blocked_literals)
                 bundle = proposals[index][0]
             if bundle.digest in seen:
                 raise ValueError("Candidate pool repeats a revision or a previously rejected harness")
@@ -308,6 +371,16 @@ def run_rounds(
             evaluated.append(measured)
             rows.append({"artifact": artifact, "diff": diff, "strategy": strategy})
         history.extend(evaluated)
+        if not all(_reliable_pair(measured, incumbent, training) for measured in evaluated):
+            rejected_artifacts.update(row["artifact"] for row in rows)
+            entry = {
+                "round": number, "incumbent_before": incumbent_id, "incumbent_after": incumbent_id,
+                "decision": "reject", "winner": None, "candidate_pool": rows, "fitness": None,
+                "gate": {"promoted": False, "reasons": [GateReason.UNRELIABLE_REVIEW]},
+            }
+            write_json(root / f"{label}-decision.json", entry)
+            rounds.append(entry)
+            continue
         group = candidate_fitness(
             [paired_scores(measured, training) for measured in evaluated],
             paired_scores(incumbent, training), noise_floor=policy.noise_floor,
@@ -329,13 +402,9 @@ def run_rounds(
                         _paired_verdicts(winning_batch, task), _paired_verdicts(incumbent, task),
                     ) if item.hurt > 0
                 ],
-            } for task in tasks
+            } for task in tasks if _reliable_pair(winning_batch, incumbent, (task,))
         }
-        gate = soft_hurt_gate(
-            winner_scores, incumbent_scores,
-            noise_floor=policy.noise_floor, max_hurt=policy.max_hurt, min_gain=policy.min_gain,
-            repair_budget=policy.repair_budget,
-        )
+        gate = promotion_gate(winning_batch, incumbent, tasks, policy)
         promoted = winner if gate.promoted else None
         winning_id = rows[selected]["artifact"]
         promoted_batch = winning_batch
@@ -350,7 +419,8 @@ def run_rounds(
                 },
             }
             try:
-                repaired, edit = _repair(model, current, winner, proposals[selected][1], asdict(gate), repair_evidence)
+                repaired, edit = _repair(model, current, winner, proposals[selected][1], asdict(gate),
+                                         repair_evidence, tools, blocked_literals)
                 if repaired.digest in rejected_artifacts:
                     raise ValueError("Scope repair repeats a previously rejected harness")
             except (ValueError, RuntimeError) as error:
@@ -359,11 +429,7 @@ def run_rounds(
                 repaired_id = _artifact(bundles, repaired)
                 corrected = solve(repaired, f"{label}-repair", tasks)
                 history.append(corrected)
-                repair_gate = soft_hurt_gate(
-                    paired_scores(corrected, tasks), paired_scores(incumbent, tasks),
-                    noise_floor=policy.noise_floor, max_hurt=policy.max_hurt,
-                    min_gain=policy.min_gain, repair_budget=policy.repair_budget, repaired=True,
-                )
+                repair_gate = promotion_gate(corrected, incumbent, tasks, policy, repaired=True)
                 repair = {"artifact": repaired_id, "diff": exact_diff(winner, repaired),
                           "edit": asdict(edit), "gate": asdict(repair_gate)}
                 if repair_gate.promoted:

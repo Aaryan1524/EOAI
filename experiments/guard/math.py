@@ -78,6 +78,8 @@ class CandidatePool:
 
 
 class GateReason(StrEnum):
+    UNRELIABLE_REVIEW = "unreliable_review"
+    REQUIRED_ACTION_INCOMPLETE = "required_action_incomplete"
     HURT_BUDGET = "hurt_budget"
     INSUFFICIENT_HELP = "insufficient_help"
     INSUFFICIENT_GAIN = "insufficient_gain"
@@ -89,9 +91,9 @@ class GateDecision:
     repair_eligible: bool
     helped: tuple[str, ...]
     hurt: tuple[str, ...]
-    net_gain: float
-    hurt_penalty: float
-    required_gain: float
+    net_gain: float | None
+    hurt_penalty: float | None
+    required_gain: float | None
     reasons: tuple[GateReason, ...]
 
 
