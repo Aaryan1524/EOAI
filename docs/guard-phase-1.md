@@ -83,8 +83,9 @@ can differ because the model and provider are not bitwise deterministic.
   the paper's stateful critic, multi-stream routing, reservoir replay, or
   benchmark-specific schedules in Appendices B–C.
 - The initial playbook is frozen EOAI v3. The shared proposal prompt adapts
-  the paper's strategy for EOAI text fields. Proposers return one bounded
-  append or exact replacement with an explicit `[iff condition]`. The
+  the paper's strategy for EOAI text fields. A proposal adds one bounded rule.
+  The controller renders its `[iff condition]` and compiles exact replacement
+  only when repairing that rule. The
   original paper allows full playbook rewrites and some executable skills.
   GUARD cannot write or run a script through an EOAI candidate.
 - EOAI uses the same verified Qwen artifact for reviewer, proposer,
@@ -97,8 +98,12 @@ can differ because the model and provider are not bitwise deterministic.
   to `repair_budget` hurt tasks and a positive net gain after removing those
   qualifying drops. Reward ties favor continuous score, then fewer hurt
   tasks, then earlier candidate index.
-- Checklist schema projections, bounded trace evidence, single-criterion
-  semantic requests, and one checklist format retry are local choices.
+- Checklist schema projections, schema-constrained selection from literal
+  public task clauses, bounded trace evidence, single-criterion semantic
+  requests, and one checklist format retry are local choices. The clause
+  splitter and model selection can omit or combine requirements. The
+  independent rubric measures that gap after selection. Semantic criteria
+  receive canonical citations when a decision or action references them.
   Invalid tool executions, corrupt evidence and incomplete tasks can lower
   scores. An orchestration error stops the experiment before promotion.
 - Deterministic gate tests use constructed trajectories to exercise accept,

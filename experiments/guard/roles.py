@@ -26,6 +26,32 @@ _PURPOSES = {
 _SEED_COUNT = 2**31
 _MAX_INSTRUCTION_BYTES = 16 * 1024
 _MAX_PAYLOAD_BYTES = 128 * 1024
+_EDIT_FIELDS = {
+    "condition": {"type": "string", "minLength": 4, "maxLength": 250},
+    "rule": {"type": "string", "minLength": 1, "maxLength": 2000},
+    "why": {"type": "string", "minLength": 1, "maxLength": 900},
+}
+
+
+def _role_format(purpose: str, payload: dict) -> dict:
+    if purpose == "checklist":
+        fields = {"selected": {"type": "array",
+                               "items": {"type": "string", "enum": list(payload["semantic_options"])}}}
+    elif purpose in ("distill", "repair"):
+        fields = dict(_EDIT_FIELDS)
+        if purpose == "distill":
+            fields["field"] = {"type": "string", "enum": ["instructions", "skills", "memory"]}
+    elif purpose == "contrast":
+        fields = {
+            "learnings": {"type": "array", "items": {"type": "string"}},
+            "updated_best_prompt": {"type": "string"}, "updated_worst_prompt": {"type": "string"},
+        }
+    else:
+        fields = {
+            "passed": {"type": "boolean"}, "why": {"type": "string"},
+            "evidence": {"type": "array", "items": {"type": "string"}},
+        }
+    return {"type": "object", "required": sorted(fields), "additionalProperties": False, "properties": fields}
 
 
 _WORKER = """
@@ -184,19 +210,10 @@ class RoleModel:
                 if messages != expected:
                     raise RuntimeError("Unexpected role sandbox prompt")
 
-                response_format = "json"
-                if purpose == "checklist":
-                    response_format = {
-                        "type": "object", "required": ["selected"], "additionalProperties": False,
-                        "properties": {"selected": {
-                            "type": "array",
-                            "items": {"type": "string", "enum": list(payload["semantic_options"])},
-                        }},
-                    }
                 body = _json({
                     "model": self._model.model_id,
                     "messages": messages,
-                    "format": response_format,
+                    "format": _role_format(purpose, payload),
                     "stream": False,
                     "think": False,
                     "options": {

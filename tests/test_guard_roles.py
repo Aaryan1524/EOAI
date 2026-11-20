@@ -77,7 +77,7 @@ def test_role_wire_uses_only_public_messages_and_assigns_stochastic_seeds(role_r
             {"role": "system", "content": "Only use public input."},
             {"role": "user", "content": json.dumps(_REQUEST, sort_keys=True, separators=(",", ":"))},
         ],
-        "format": "json",
+        "format": roles._role_format("distill", _REQUEST),
         "stream": False,
         "think": False,
         "options": {"num_ctx": 32768, "num_predict": 2048, "temperature": 0.65, "seed": 41},

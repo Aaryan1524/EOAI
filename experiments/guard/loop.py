@@ -25,9 +25,9 @@ SHARED_STRATEGY = (
 )
 DISTILL = (
     "Apply the strategy to the supplied incumbent and evidence. Preserve mastered constraints. "
-    "Return one JSON object with string fields field, old, new, why. Field is instructions, skills, or memory. "
-    "old is an exact unique substring of that field, or empty to append. new is one concise text rule. "
-    "Start new with a concrete [iff condition] using a public request or tool-state signal. "
+    "Propose one appended mechanism. Return field, condition, rule, and why as strings. "
+    "Choose instructions, skills, or memory for field. Write a short observable condition without brackets. "
+    "Write the rule to apply only under that condition. The controller supplies the [iff] wrapper. "
     "Use no executable code. Do not hard-code case IDs, reference outcomes, or tool results."
 )
 
@@ -51,6 +51,24 @@ class Edit:
         if not 0 < len(edit.new) <= 2500 or not re.match(r"\s*\[iff [^\[\]\n]{4,250}\]", edit.new):
             raise ValueError("Edit lacks a bounded [iff condition]")
         return edit
+
+    @classmethod
+    def from_proposal(cls, value: dict, repair_of: "Edit | None" = None) -> "Edit":
+        fields = {"condition", "rule", "why"}
+        if repair_of is None:
+            fields.add("field")
+        if not isinstance(value, dict) or value.keys() != fields or any(type(part) is not str for part in value.values()):
+            raise ValueError("Invalid scoped proposal shape")
+        condition = value["condition"].strip()
+        rule = value["rule"].strip()
+        if not rule or not re.fullmatch(r"[^\[\]\n]{4,250}", condition):
+            raise ValueError("Proposal requires a bounded condition and nonempty rule")
+        return cls.parse({
+            "field": value["field"] if repair_of is None else repair_of.field,
+            "old": "" if repair_of is None else repair_of.new.strip(),
+            "new": f"[iff {condition}] {rule}",
+            "why": value["why"],
+        })
 
 
 def content(harness: Harness | HarnessContent) -> HarnessContent:
@@ -181,11 +199,12 @@ def _proposal(model: Complete, incumbent: HarnessContent, strategy: str, regret:
     payload = {"strategy": strategy, "incumbent": incumbent.as_dict(), "regret": regret}
     for attempt, temperature in enumerate((0.65, 0.85), start=1):
         try:
-            edit = Edit.parse(model("candidate-generator", "distill", DISTILL, payload, temperature))
+            instruction = DISTILL if attempt == 1 else DISTILL + " Use short, plain text in each field."
+            edit = Edit.from_proposal(model("candidate-generator", "distill", instruction, payload, temperature))
             return apply_edit(incumbent, edit), edit
         except ValueError as error:
             if attempt == 2:
-                raise ValueError("Candidate could not be generated within its retry budget") from error
+                raise ValueError(f"Candidate could not be generated within its retry budget: {error}") from error
     raise AssertionError("Unreachable proposal state")
 
 
@@ -193,14 +212,12 @@ def _repair(model: Complete, incumbent: HarnessContent, winner: HarnessContent,
             winning_edit: Edit, gate: dict, regret: dict):
     value = model(
         "distiller", "repair",
-        DISTILL + " Repair the winner by narrowing the rule associated with the observed replay regression. "
-        "Set field and old exactly to the supplied winning_edit field and new text, respectively. "
-        "Replace that rule with a narrower one.",
+        "Narrow the winning rule using the paired examples of the replay regression. Return exactly "
+        "condition, rule and why as strings. The controller replaces the winning rule in its original field. "
+        "Use a plain observable condition without brackets and no executable code.",
         {"incumbent": incumbent.as_dict(), "candidate": winner.as_dict(), "gate": gate, "regret": regret}, 0.25,
     )
-    edit = Edit.parse(value)
-    if edit.field != winning_edit.field or edit.old != winning_edit.new.strip():
-        raise ValueError("Scope repair must replace the winning rule in its original field")
+    edit = Edit.from_proposal(value, repair_of=winning_edit)
     return apply_edit(winner, edit), edit
 
 

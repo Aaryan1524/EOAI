@@ -33,11 +33,12 @@ def test_round_pairs_gate_rollbacks_and_never_promotes_failed_repair(tmp_path, r
     def model(role, purpose, instruction, payload, temperature):
         if purpose == "distill":
             proposal_inputs.append(payload)
-            rule = "[iff first trigger] Candidate best." if next(serial) == 0 else "[iff other trigger] Candidate worst."
-            return {"field": "skills", "old": "", "new": rule, "why": "Test fixture only"}
+            condition, rule = ("first trigger", "Candidate best.") if next(serial) == 0 else (
+                "other trigger", "Candidate worst.",
+            )
+            return {"field": "skills", "condition": condition, "rule": rule, "why": "Test fixture only"}
         if purpose == "repair":
-            return {"field": "skills", "old": "[iff first trigger] Candidate best.",
-                    "new": "[iff narrowed trigger] Candidate repaired.", "why": "Restore replay"}
+            return {"condition": "narrowed trigger", "rule": "Candidate repaired.", "why": "Restore replay"}
         assert purpose == "contrast"
         assert "private-development-task" not in json.dumps(payload)
         return {"learnings": ["Scope matters."], "updated_best_prompt": "Preserve scoped evidence.",
@@ -88,7 +89,8 @@ def test_prior_rejection_is_skipped_even_if_a_later_proposal_repeats_its_text(tm
 
     def model(role, purpose, instruction, payload, temperature):
         if purpose == "distill":
-            return {"field": "skills", "old": "", "new": next(alternatives), "why": "Scripted gate test"}
+            condition, _, rule = next(alternatives).removeprefix("[iff ").partition("] ")
+            return {"field": "skills", "condition": condition, "rule": rule, "why": "Scripted gate test"}
         return {"learnings": ["No gain."], "updated_best_prompt": "Use the evidence.",
                 "updated_worst_prompt": "Narrow the trigger."}
 
