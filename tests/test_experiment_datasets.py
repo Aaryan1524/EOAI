@@ -130,26 +130,20 @@ def _write_manifest(path, data):
     path.chmod(0o600)
 
 
-@pytest.fixture
-def simulated_distinct_owner(monkeypatch):
-    # Simulate only uid discovery. The loader still checks actual paths, modes, and contents.
-    monkeypatch.setattr(datasets, "_workspace_owner", lambda path: os.geteuid() + 1)
+def test_two_directories_do_not_allow_private_storage_inside_improvement(demo_heldout):
+    _, path, _ = demo_heldout
+    with pytest.raises(datasets.DatasetError, match="outside the improvement workspace"):
+        datasets.load_heldout(path, improvement_root=path.parent)
 
 
-def test_same_account_cannot_import_even_with_two_directories(demo_heldout):
-    workspace, path, _ = demo_heldout
-    with pytest.raises(datasets.DatasetError, match="distinct unprivileged improvement account"):
-        datasets.load_heldout(path, improvement_root=workspace)
-
-
-def test_distinct_owner_check_cannot_make_git_storage_private(demo_heldout, simulated_distinct_owner):
+def test_git_storage_cannot_be_private(demo_heldout):
     workspace, path, _ = demo_heldout
     (path.parent / ".git").mkdir()
     with pytest.raises(datasets.DatasetError, match="outside Git checkouts"):
         datasets.load_heldout(path, improvement_root=workspace)
 
 
-def test_heldout_public_projection_contains_only_model_inputs(demo_heldout, simulated_distinct_owner):
+def test_heldout_public_projection_contains_only_model_inputs(demo_heldout):
     workspace, path, _ = demo_heldout
     suite = datasets.load_heldout(path, improvement_root=workspace)
     (case,) = suite.cases
@@ -170,7 +164,7 @@ def test_heldout_public_projection_contains_only_model_inputs(demo_heldout, simu
 
 
 @pytest.mark.parametrize("bad_file", ["manifest", "snapshot", "symlink", "hardlink"])
-def test_heldout_requires_private_regular_files(demo_heldout, simulated_distinct_owner, bad_file):
+def test_heldout_requires_private_regular_files(demo_heldout, bad_file):
     workspace, path, data = demo_heldout
     if bad_file == "manifest":
         path.chmod(0o644)
@@ -187,14 +181,14 @@ def test_heldout_requires_private_regular_files(demo_heldout, simulated_distinct
         datasets.load_heldout(path, improvement_root=workspace)
 
 
-def test_heldout_requires_private_directory(demo_heldout, simulated_distinct_owner):
+def test_heldout_requires_private_directory(demo_heldout):
     workspace, path, _ = demo_heldout
     path.parent.chmod(0o755)
     with pytest.raises(datasets.DatasetError, match="custodian-owned and private"):
         datasets.load_heldout(path, improvement_root=workspace)
 
 
-def test_heldout_rejects_digest_mismatch(demo_heldout, simulated_distinct_owner):
+def test_heldout_rejects_digest_mismatch(demo_heldout):
     workspace, path, data = demo_heldout
     data["cases"][0]["snapshot"]["sha256"] = "0" * 64
     _write_manifest(path, data)
@@ -202,7 +196,7 @@ def test_heldout_rejects_digest_mismatch(demo_heldout, simulated_distinct_owner)
         datasets.load_heldout(path, improvement_root=workspace)
 
 
-def test_external_copy_of_public_fixture_rejected(demo_heldout, simulated_distinct_owner):
+def test_external_copy_of_public_fixture_rejected(demo_heldout):
     workspace, path, data = demo_heldout
     snapshot = seed_snapshot(path.parent, "copied-but-renamed", scenario="baseline")
     data["cases"][0]["snapshot"].update(filename=snapshot.path.name, sha256=snapshot.digest)
@@ -211,7 +205,7 @@ def test_external_copy_of_public_fixture_rejected(demo_heldout, simulated_distin
         datasets.load_heldout(path, improvement_root=workspace)
 
 
-def test_private_manifest_rejects_extra_agent_fields(demo_heldout, simulated_distinct_owner):
+def test_private_manifest_rejects_extra_agent_fields(demo_heldout):
     workspace, path, data = demo_heldout
     data["cases"][0]["task"]["gold_case_label"] = "private-marker"
     _write_manifest(path, data)

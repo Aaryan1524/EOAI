@@ -32,36 +32,34 @@ exclude generated IDs and tool ordering. The raw artifacts retain them for audit
 
 ## Run held-out cases
 
-A custodian prepares new cases and SQLite seeds on an evaluator host. Use
-[the schema](datasets/heldout.schema.json), and keep the manifest, expected
-outcomes, SQLite seeds, traces, and reports in one dedicated private directory
-outside Git checkouts. Give the evaluator and improvement workers distinct
-unprivileged accounts. A dedicated evaluator VM with no shared mounts or shared
-Ollama endpoint is a stronger boundary. The improvement account must have no
-admin rights, access to evaluator service logs, or ability to invoke grading.
+A custodian prepares new cases and SQLite seeds on the evaluator host. Use
+[the schema](datasets/heldout.schema.json) and keep the manifest, expected
+outcomes, SQLite seeds, traces, and reports in one private directory outside
+Git checkouts and the improvement workspace.
 
-The evaluator consumes candidate text bundles after candidate selection closes.
-Use a trusted checkout to run the evaluator. Load the candidate bundle as data;
-the improvement checkout is never an import path. Pin the suite digest,
-evaluator and runner source digests, commit, model digest, harness digest, and
-execution limits in the study record before opening the sealed suite. The
-`heldout --help` command lists the required options. Both held-out arms run
-within one invocation and share the same model, snapshot, tool configuration,
-limits, and trial count. The held-out command saves
-all reports under the private suite directory. Its caller must be the evaluator
-account. Keep scores and logs private until both arms and the improvement
-process are closed.
+The held-out command requires macOS with a working native process sandbox.
+It verifies the live policy for the solver, reviewer, distiller, and candidate
+generator before running either arm. Each solver starts in a fresh sandboxed
+Python process. It receives only the task, a verified copy of the scenario
+seed, the selected harness, and fixed runner settings. The evaluator process
+owns the private suite and grades after the solver exits. The solver can reach
+only a local broker that forwards model identity and inference calls to the
+pinned model. The three improvement role profiles have no network allowance.
+The worker receives an empty environment and only its standard input, output,
+and error descriptors.
 
-Before a freeze, prove that the actual solver deployment and each improvement
-role cannot read private input, answers, traces or scores, list their directory,
-or invoke the evaluator. Run that probe against the deployed accounts and
-service boundary using canary data. The repository tests verify the application
-boundary and fail-closed permission checks. Provisioning a private suite and
-testing its real deployment are separate readiness checks. The current command
-runs the trusted EOAI host runner within the evaluator process. The model
-receives its normal task and tool messages. A process-level boundary between
-private answers and the solver runner requires a separate deployment and access
-verification.
+Use the same default-deny launcher for all future improvement workers. Run
+no worker code as the unrestricted custodian account. The checks establish
+isolation for processes started through the launcher. The underlying host,
+Python environment, and model service are trusted. Hosts that cannot apply the
+kernel policy fail closed. GUARD workers are not part of this repository.
+
+The evaluator consumes a candidate text bundle after candidate selection
+closes. Pin the suite and source digests, commit, model digest, harness digest,
+and limits in the study record before running the pilot. Both arms run in one
+invocation with identical fixed settings. The held-out command stores all
+reports, including the role access probes, inside the private directory. Keep
+those reports private until both arms and improvement are closed.
 
 The initial rubric covers ticket creation, invoice inventory and review for an
 identified account. Use cases supported by the rubric when preparing the sealed

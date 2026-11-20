@@ -134,7 +134,8 @@ def test_heldout_uses_one_fixed_configuration_and_keeps_output_private(
         }))
         return SimpleNamespace(trace_path=trace, sandbox=SimpleNamespace(path=tmp_path / "run.sqlite3"))
 
-    monkeypatch.setattr(evaluation, "run_trial", run)
+    monkeypatch.setattr(evaluation, "isolated_trial", run)
+    monkeypatch.setattr(evaluation, "verify_roles", lambda *args: {"solver": {"private_answers": True}})
     monkeypatch.setattr(evaluation, "score", lambda *args: {"passed": True, "semantic_outcome": {}})
     case.snapshot = SimpleNamespace(path=tmp_path / "source.sqlite3")
     args = SimpleNamespace(

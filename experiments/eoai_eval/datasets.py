@@ -364,8 +364,8 @@ def _validate_expectations(task: RunTask, expected: _Expectations) -> None:
 def _private_root(root: Path, improvement_root: Path) -> Path:
     try:
         improvement_root = improvement_root.resolve(strict=True)
-        if _workspace_owner(improvement_root) in {0, os.geteuid()}:
-            raise DatasetError("Held-out evaluation requires a distinct unprivileged improvement account")
+        if not improvement_root.is_dir():
+            raise DatasetError("Improvement workspace must be a directory")
         if root.is_symlink():
             raise DatasetError("Held-out storage must be a real directory")
         root = root.resolve(strict=True)
@@ -379,13 +379,6 @@ def _private_root(root: Path, improvement_root: Path) -> Path:
     except (OSError, RuntimeError):
         raise DatasetError("Held-out storage boundary cannot be verified") from None
     return root
-
-
-def _workspace_owner(path: Path) -> int:
-    info = path.stat()
-    if not stat.S_ISDIR(info.st_mode):
-        raise DatasetError("Improvement workspace must be a directory")
-    return info.st_uid
 
 
 def _private_file(root: Path, filename: str) -> Path:
