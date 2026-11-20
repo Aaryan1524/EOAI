@@ -176,7 +176,7 @@ def _reliable_pair(candidate: Batch, incumbent: Batch, tasks: tuple[str, ...]) -
         if not before or len(before) != len(after):
             return False
         expected = {row.criterion_id for row in before[0].verdicts}
-        if any({row.criterion_id for row in run.verdicts} != expected or
+        if not expected or any({row.criterion_id for row in run.verdicts} != expected or
                any(not _is_grade(row) for row in run.verdicts) for run in (*before, *after)):
             return False
     return True
@@ -227,7 +227,7 @@ def _diagnostics(
         for item in rank_criteria(current, earlier, regression_candidate=refused):
             rationales = list(dict.fromkeys(
                 verdict.rationale for trial in current for verdict in trial
-                if verdict.criterion_id == item.criterion_id and verdict.passed is False
+                if verdict.criterion_id == item.criterion_id and verdict.passed is False and _is_grade(verdict)
             ))[:2]
             groups[str(item.status)].append(asdict(item) | {
                 "task": task, "requirement": descriptions[task][item.criterion_id],
@@ -248,7 +248,9 @@ def _diagnostics(
                                     item["task"], item["criterion_id"]))
     return {"criteria": groups, "contrasts": contrasts, "observed_incumbent_traces": observations,
             "contrast_note": "No qualifying contrasting observations are available." if not contrasts else None,
-            "rejections": list(ledger)}
+            "rejections": [row for row in ledger
+                           if GateReason.UNRELIABLE_REVIEW not in row["gate"]["reasons"]
+                           and GateReason.UNRELIABLE_REVIEW not in (row.get("repair") or {}).get("gate", {}).get("reasons", ())]}
 
 
 def _proposal(model: Complete, incumbent: HarnessContent, strategy: str, regret: dict,
@@ -326,7 +328,7 @@ def run_rounds(
     """Use only scored trajectories produced by self-review to decide promotions."""
     tasks = training + replay
     tools = compact_declarations(declarations)
-    blocked_literals = (*tasks, *forbidden)
+    blocked_literals = (*tasks, *forbidden, *(key for checks in descriptions.values() for key in checks))
     if not training or len(set(tasks)) != len(tasks) or set(descriptions) != set(tasks):
         raise ValueError("Require disjoint training and replay tasks with frozen checklists")
     bundles = root / "harnesses"
@@ -391,8 +393,9 @@ def run_rounds(
         if replay:
             winning_batch.update(solve(winner, f"{label}-replay", replay))
         history.append(winning_batch)
-        incumbent_scores = paired_scores(incumbent, tasks)
-        winner_scores = paired_scores(winning_batch, tasks)
+        comparable = tuple(task for task in tasks if _reliable_pair(winning_batch, incumbent, (task,)))
+        incumbent_scores = paired_scores(incumbent, comparable)
+        winner_scores = paired_scores(winning_batch, comparable)
         paired_deltas = {
             task: {
                 "continuous": winner_scores[task].continuous - incumbent_scores[task].continuous,
@@ -402,7 +405,7 @@ def run_rounds(
                         _paired_verdicts(winning_batch, task), _paired_verdicts(incumbent, task),
                     ) if item.hurt > 0
                 ],
-            } for task in tasks if _reliable_pair(winning_batch, incumbent, (task,))
+            } for task in comparable
         }
         gate = promotion_gate(winning_batch, incumbent, tasks, policy)
         promoted = winner if gate.promoted else None
@@ -440,7 +443,10 @@ def run_rounds(
         previous_id = incumbent_id
         if promoted is None:
             rejected_artifacts.add(winning_id)
-            rejected = winning_batch
+            unreliable = GateReason.UNRELIABLE_REVIEW in gate.reasons or (
+                repair is not None and GateReason.UNRELIABLE_REVIEW in repair.get("gate", {}).get("reasons", ())
+            )
+            rejected = None if unreliable else winning_batch
             prior = None
             ledger = [row for row in ledger if row["artifact"] != winning_id]
             ledger.append({"artifact": winning_id, "gate": asdict(gate),

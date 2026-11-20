@@ -106,3 +106,36 @@ def test_prior_rejection_is_skipped_even_if_a_later_proposal_repeats_its_text(tm
     assert [round_["decision"] for round_ in result["rounds"]] == ["reject", "reject"]
     assert result["baseline"] == result["final"]
     assert evaluated.count(first) == 1
+
+
+def test_uncertain_replay_is_logged_but_never_becomes_proposal_feedback(tmp_path):
+    proposals = count()
+    prompts = []
+
+    def model(role, purpose, instruction, payload, temperature):
+        if purpose == "distill":
+            prompts.append(payload)
+            serial = next(proposals)
+            return {"field": "skills", "condition": f"observable phase number {serial}",
+                    "rule": "Verify the complete page chain.", "why": "A scripted gate fixture"}
+        return {"learnings": ["Scope is useful."], "updated_best_prompt": "Use evidence.",
+                "updated_worst_prompt": "Narrow the trigger."}
+
+    def solve(harness, arm, tasks):
+        return {
+            task: (Trajectory(task, arm, (Verdict("check", None if arm == "r1-replay" else True),),
+                              False, {}, {"status": "measured"}),)
+            for task in tasks
+        }
+
+    result = run_rounds(tmp_path, load_harness("v3"), ("training",), ("replay",), {
+        "training": {"check": "Complete the task"}, "replay": {"check": "Observe the replay"},
+    }, solve, model, Policy(rounds=2))
+    assert result["rounds"][0]["gate"]["reasons"] == ("unreliable_review",)
+    assert result["baseline"] == result["final"]
+    ledger = json.loads((tmp_path / "r1-rejection-ledger.json").read_text())
+    assert ledger[0]["gate"]["reasons"] == ["unreliable_review"]
+    for payload in prompts[2:]:
+        assert payload["regret"]["rejections"] == []
+        assert payload["regret"]["observed_incumbent_traces"]
+        assert any(tool["name"] == "invoice.assess" for tool in payload["tool_declarations"])

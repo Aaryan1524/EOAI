@@ -24,14 +24,17 @@ _PROSE_ARGUMENT = re.compile(
     rf"\b(?:argument|parameter)\s+named\s+`?({_WORD})`?|"
     rf"\b(?:argument|parameter)\s+`({_WORD})`|"
     rf"`({_WORD})`\s+(?:argument|parameter)\b|"
+    rf"`({_WORD})`\s+(?:set to|equal to)\b|"
     r"\b([A-Za-z][A-Za-z0-9]*_[A-Za-z_0-9]+)\s+(?:argument|parameter)\b",
     re.I,
 )
+_PROSE_RESULT = re.compile(rf"\breturns?\s+(?:the\s+)?(?:`({_WORD})`|([a-z][a-z0-9]*_[a-z_0-9]+))", re.I)
 _CALL = re.compile(r"""\((?:[^()'"\\]|"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*')*\)""")
 _JSON = json.JSONDecoder()
 _REVIEW_FEEDBACK = re.compile(
     r"(?<![\w-])(?:reviewers?|criteria|criterions?|criterion|verdicts?|criterion[_-]ids?|"
-    r"task[_-]ids?|req_\d+|grader(?:s)?|rubric(?:s)?|reference[_-](?:grades?|answers?))(?![\w-])",
+    r"task[_-]ids?|req_\d+|eoai_[a-z0-9_]+|unreliable_review|grader(?:s)?|rubric(?:s)?|"
+    r"reference[_-](?:grades?|answers?))(?![\w-])",
     re.I,
 )
 _ENTITY_ID = re.compile(
@@ -42,6 +45,13 @@ _ENTITY_ID = re.compile(
 )
 _OPAQUE_ARGS = {"account_ref", "cursor", "page_cursor", "preview_token", "idempotency_key"}
 _LITERAL_NAMES = {"true": True, "false": False, "null": None}
+_RUNTIME_ALIASES = {
+    "customer_id": {"account_ref"}, "account_ref": {"customer_id"},
+    "cursor": {"next_cursor"}, "page_cursor": {"next_cursor", "cursor"},
+    "ticket_id": {"result_id"}, "approval_id": {"result_id"},
+    "expected_tenant_revision": {"tenant_revision", "state_revision"},
+    "expected_invoice_version": {"invoice_version"}, "expected_policy_version": {"policy_version"},
+}
 _JSON_TYPES = {
     "string": (str,), "integer": (int,), "number": (int, float),
     "boolean": (bool,), "null": (type(None),), "array": (list,),
@@ -150,12 +160,10 @@ def _argument_error(
             values = value if isinstance(value, list) else [value]
             for item in values:
                 if isinstance(item, _RuntimeReference):
-                    _, _, unqualified = item.name.partition("_")
                     allowed_prefixes = ("observed_", "requested_", "returned_", "current_")
-                    if item.name not in runtime_fields and not (
-                        item.name.startswith(allowed_prefixes) and unqualified in runtime_fields
-                    ):
-                        return f"{name} argument {key} refers to an unknown runtime field"
+                    symbol = item.name.split("_", 1)[1] if item.name.startswith(allowed_prefixes) else item.name
+                    if symbol not in runtime_fields or symbol not in {key, *_RUNTIME_ALIASES.get(key, ())}:
+                        return f"{name} argument {key} refers to an unknown or incompatible runtime field"
                 if isinstance(item, str):
                     if key in _OPAQUE_ARGS or key.endswith(("_id", "_ids")):
                         return f"{name} argument {key} must come from the current request or tool results"
@@ -255,6 +263,11 @@ def validate_rule(text: str, declarations: Iterable[Mapping], *, forbidden: Iter
                     key = next(value for value in reference.groups() if value is not None)
                     if any(key not in variant["arguments"]["properties"] for variant in by_name[name]):
                         return f"{name} does not declare argument {key}"
+                for reference in _PROSE_RESULT.finditer(clause):
+                    key = next(value for value in reference.groups() if value is not None)
+                    if any(key not in variant.get("result_fields", variant.get("result", {}).get("properties", ()))
+                           for variant in by_name[name]):
+                        return f"{name} does not declare result field {key}"
         except (SyntaxError, ValueError, RecursionError):
             return "Rule has malformed tool arguments"
     return None

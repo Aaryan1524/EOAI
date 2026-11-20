@@ -106,3 +106,20 @@ def test_reject_named_invented_argument_in_prose():
         "Call invoice.assess with the `due_date_threshold` parameter.",
         declarations_for_profile("enterprise_ops:v1"),
     )
+
+
+def test_reject_fixed_criterion_identifier_in_prose():
+    assert validate_rule(
+        "Complete eoai_required_action_completion before reporting success.",
+        declarations_for_profile("enterprise_ops:v1"),
+    )
+
+
+@pytest.mark.parametrize("rule", [
+    "Call invoice.assess with `due_date_threshold` set to 30.",
+    "If invoice.assess returns contractual_basis, copy it into the action arguments.",
+    "Call invoice.assess(invoice_id=state_revision).",
+    "Try again if the run receives unreliable_review.",
+])
+def test_reject_audited_protocol_and_prose_field_bypasses(rule):
+    assert validate_rule(rule, declarations_for_profile("enterprise_ops:v1"))

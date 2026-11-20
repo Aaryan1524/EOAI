@@ -743,8 +743,11 @@ def _deterministic(checklist: Checklist, artifacts: _Artifacts, blocking: str | 
     operation = checklist.public_context["operation"]
     if (size := _requested_page_size(checklist.request)) is not None:
         pages = [call for call in artifacts.calls if call.name == "invoice.search" and call.data is not None]
-        checks["page_size"] = (bool(pages) and all(call.args["limit"] == size for call in pages),
-                               f"Compared successful invoice search arguments to requested page size {size}.")
+        observed_sizes = sorted({call.args["limit"] for call in pages})
+        checks["page_size"] = (
+            observed_sizes == [size], f"Required page size {size}. "
+            f"Successful invoice searches used {observed_sizes or 'no observed pages'}.",
+        )
     if operation in {"review_invoices", "escalate"}:
         assessed = _assessment_coverage(artifacts, invoices)
         missing = invoices - {row["invoice_id"] for row in artifacts.output["decisions"]}
@@ -771,8 +774,10 @@ def _deterministic(checklist: Checklist, artifacts: _Artifacts, blocking: str | 
             ),
         })
     else:
+        changed = sorted(name for name in artifacts.before if artifacts.before[name] != artifacts.after[name])
         checks["read_only"] = (
-            artifacts.before == artifacts.after, "Compared the retained sandbox and source SQLite database rows.",
+            not changed, f"Read-only task changed database tables: {', '.join(changed)}." if changed
+            else "All database rows match the seed.",
         )
     return checks
 
