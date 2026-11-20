@@ -112,3 +112,78 @@ can differ because the model and provider are not bitwise deterministic.
 - The final comparison with naive RSI, repeated experiments and held-out
   evaluation is deferred. The development pilot can diagnose behavior and
   gate decisions. It cannot establish a generalization or forgetting advantage.
+
+## Observed Phase 1 development pilot
+
+The public-only run is `runs/guard-phase1/pilot-06`. Its exact implementation
+commit is `5a298f9e5771eac22571f766ae37f6173070fcdb`. The full suite passed
+**328 tests** with the real macOS checks enabled. The measured runtime matches
+the frozen runtime manifest. All four role profiles passed 14 live boundary
+checks. The 16 archived Long Acme and Harborline files still match their
+original checksums.
+
+Self-review scores are continuous / strict on a 0–100 scale. The final column
+shows the independent scorer's whole-task verdict. The selected candidate
+ran again on fresh snapshots after promotion.
+
+| Task | Frozen v0 | Candidate 0 at gate | Fresh post-selection | Independent v0 → post |
+|---|---:|---:|---:|---|
+| Long Acme | 44.44 / 0 | 44.44 / 0 | 55.56 / 0 | Fail → fail |
+| Acme account escalation | 90.00 / 45.00 | 90.00 / 45.00 | 80.00 / 40.00 | Pass → pass |
+| Harborline | 81.82 / 40.91 | 100.00 / 100.00 | 90.91 / 45.45 | Fail → fail |
+| Acme list | 100.00 / 100.00 | 100.00 / 100.00 | 100.00 / 100.00 | Pass → pass |
+| Meridian conflict | 87.50 / 0 | 75.00 / 0 | 75.00 / 0 | Pass → pass |
+
+The model generated two instruction edits under identical first-round prompts.
+Both scored 67.22 continuous and 22.50 strict on the training pair, giving
+each a reward of 39.3056 and standardized fitness of zero. The configured
+tie-break chose candidate 0. Both proposed conditions depended on unavailable
+reviewer feedback and invented invoice-assessment fields. Both also targeted
+escalation instead of the observed Long Acme customer-pagination failure.
+The edits and their exact diffs are preserved in `r1-candidate-0.json` and
+`r1-candidate-1.json`.
+
+On the five-task gate, Harborline gained 18.18 points and Meridian lost 12.50.
+The Meridian loss is retained at criterion level. It falls within the
+paper's 15-point task noise floor and added no hurt penalty. The gate
+accepted candidate 0 with +1.1364 mean continuous points and a threshold of
+zero. A live scope repair was ineligible under this gate decision. The
+deterministic tests cover both accepted and rejected repairs and rollback.
+Best/worst contrast generated the two next-round prompts. This pilot ran
+one round, so it did not evaluate those prompts.
+
+Independent correctness was **3/5 before and 3/5 after**. Harborline went
+from three assessed invoices to six at the gate and again on the fresh
+post-selection run. None of those three trials created the required ticket.
+The self-review gave the gate rollout 100/100 because its checks did not
+require a successful eligible write when no write was attempted. Long Acme
+still failed customer coverage. Acme escalation created and verified one
+INV-104 ticket for each evaluated arm. Meridian continued to meet its
+independent business requirements, although its semantic check failed on
+an invalid evidence-backed verdict. The fresh macro self-review moved from
+80.75 to 80.29 continuous and from 37.18 to 37.09 strict. This pilot provides
+no evidence of a net task-success improvement or advantage over naive RSI.
+
+Seventeen solver trials used 190 model turns and 158 tool calls. Solver
+usage was 820,076 input and 4,951 output tokens. The 39 role calls used
+219,586 input and 5,323 output tokens. Per-call and per-run latency,
+snapshot and trace digests, criterion evidence, and two paired trajectory
+contrasts remain with the run. Earlier attempts exposed checklist formatting
+and provider grammar issues. They ended before candidate promotion and
+remain separate from the measured pilot.
+
+### Independent audit entry points
+
+- Read `math.py` alongside Eqs. 2–13. The deterministic fixtures explicitly
+  test fractional obedience, threshold equality, regression penalties and
+  controlled gate decisions.
+- Read `loop.py` and the live `r1-decision.json` together. Check the equal
+  candidate rewards, selected index, task deltas, and promotion inequality.
+- Compare `reviews/r1-replay-compound-escalation-1.json` with the matching
+  entry in `independent-development-audit.json`. This is the observed
+  calibration failure. Review the completeness of eligibility-to-write
+  checks before preregistering a comparative benchmark.
+- Use `protocol.json`, candidate artifacts, `selection.json`,
+  `post-selection.json`, and `trajectory-contrasts.json` for the public
+  evidence package. The experiment reproduction above uses only development
+  and replay cases.
