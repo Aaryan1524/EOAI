@@ -3,7 +3,7 @@
 from dataclasses import dataclass, field, replace
 
 from enterprise_ops.agent.runner import RunTask
-from enterprise_ops.domain.entities import Capability, Principal
+from enterprise_ops.domain.entities import Capability, EscalationRestrictions, Principal
 from enterprise_ops.sandbox import FaultKind, FaultPlan, FaultStep
 from enterprise_ops.tools.session import WriteScope
 
@@ -15,6 +15,7 @@ class CatalogTask:
     profile: str
     level: int
     faults: FaultPlan = field(default_factory=FaultPlan)
+    restrictions: EscalationRestrictions = EscalationRestrictions()
 
 
 _NORTHSTAR = Principal("northstar_property", "analyst")
@@ -47,6 +48,17 @@ _CATALOG = {
             _NORTHSTAR, "review_invoices", customer_id="meridian", invoice_ids=frozenset({"INV-M01"}),
         ),
         scenario="baseline", profile=_V1, level=2,
+    ),
+    "acme-account-escalation": CatalogTask(
+        RunTask(
+            "acme-account-escalation",
+            "Review all invoices for Acme Property Group. Check which unpaid invoices are more "
+            "than 30 days overdue using contractual due dates. Skip disputed invoices and ones "
+            "with active tickets. Create and verify a ticket for each eligible invoice when authorized.",
+            _NORTHSTAR, "escalate", customer_id="acme",
+        ),
+        scenario="baseline", profile=_V1, level=3,
+        restrictions=EscalationRestrictions(threshold_days=30, exclude_disputed=True),
     ),
     "acme-paged-v2": CatalogTask(
         RunTask(
@@ -91,6 +103,7 @@ def load_task(name: str, *, authorize_writes: bool = False) -> CatalogTask:
         scope = WriteScope(
             principal=task.principal, scope_id=f"catalog-{task.id}", customer_id=task.customer_id,
             capabilities=frozenset({Capability.CREATE_TICKET}), invoice_ids=task.invoice_ids,
+            restrictions=entry.restrictions,
         )
         task = replace(task, write_scope=scope)
     return replace(entry, task=task, faults=entry.faults.fresh())

@@ -93,4 +93,4 @@ The default artifact directory is `runs/`. Pass `--root PATH` before the command
 
 Replay checks the original snapshot, task, tool declarations, fault plan, model digest and settings, and harness. It creates a fresh sandbox and makes new inference requests, verifying the digest of the installed model tag around inference. `--harness v2` explicitly changes the instructions for the new run. For interrupted runs, `inspect` can recover committed audit events without changing the retained SQLite files.
 
-Local-model smoke testing verified invoice listing, ambiguity handling, and a guided ticket write with read-back. The unassisted reference escalation remains unverified on the installed model.
+Run the full Acme development case with `ops-agent run baseline --task acme-account-escalation --id acme-dev --harness v3 --authorize-writes`. On the synthetic fixture, the expected result is one verified new ticket, one preserved active ticket, and no actions for the disputed or settled invoices. Inspect the run with `ops-agent inspect acme-dev`.

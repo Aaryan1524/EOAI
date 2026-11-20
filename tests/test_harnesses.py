@@ -9,7 +9,7 @@ from enterprise_ops.agent.harness import harness_versions, load_harness
 
 
 def test_packaged_harness_versions():
-    assert harness_versions() == ("v1", "v2")
+    assert harness_versions() == ("v1", "v2", "v3")
     v1 = load_harness()
     v2 = load_harness("v2")
     assert v1 == load_harness("v1")
@@ -18,11 +18,11 @@ def test_packaged_harness_versions():
     assert v2.version == "v2"
     assert v2.instructions != v1.instructions
     assert v2.digest != v1.digest
-    for installed in (v1, v2):
+    for installed in (v1, v2, load_harness("v3")):
         assert installed.digest == sha256(installed.instructions.encode("utf-8")).hexdigest()
 
 
-@pytest.mark.parametrize("version", ["v3", "V1", "../v1", "v1/../v2", "/v1", ""])
+@pytest.mark.parametrize("version", ["v4", "V1", "../v1", "v1/../v2", "/v1", ""])
 def test_rejects_unsupported_harness_versions(version):
     with pytest.raises(ValueError, match="Unsupported harness version"):
         load_harness(version)

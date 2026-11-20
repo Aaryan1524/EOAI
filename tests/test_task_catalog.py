@@ -17,13 +17,15 @@ def _snapshot(tmp_path, entry):
 
 def test_catalog_assigns_only_explicitly_authorized_write_scope():
     assert task_names() == (
-        "acme-list", "acme-escalation", "meridian-conflict", "acme-paged-v2", "compound-escalation",
+        "acme-list", "acme-escalation", "meridian-conflict", "acme-account-escalation",
+        "acme-paged-v2", "compound-escalation",
     )
     for name in task_names():
         assert load_task(name).task.write_scope is None
 
     for name, customer_id, invoice_ids in (
         ("acme-escalation", "acme", frozenset({"INV-104"})),
+        ("acme-account-escalation", "acme", None),
         ("compound-escalation", "harborline", None),
     ):
         task = load_task(name, authorize_writes=True).task
@@ -32,6 +34,10 @@ def test_catalog_assigns_only_explicitly_authorized_write_scope():
         assert task.write_scope.customer_id == task.customer_id == customer_id
         assert task.write_scope.invoice_ids == task.invoice_ids == invoice_ids
         assert task.write_scope.capabilities == {Capability.CREATE_TICKET}
+
+    full_acme = load_task("acme-account-escalation", authorize_writes=True).task
+    assert full_acme.write_scope.restrictions.threshold_days == 30
+    assert full_acme.write_scope.restrictions.exclude_disputed
 
     for name in ("acme-list", "meridian-conflict", "acme-paged-v2"):
         assert load_task(name, authorize_writes=True).task.write_scope is None

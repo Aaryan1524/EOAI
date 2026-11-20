@@ -10,6 +10,7 @@ _HARNESSES = Path(__file__).with_name("harnesses")
 _MANIFEST_DIGESTS = {
     "v1": "5477e3019d30aa21e4dc7f525f973b54e769a7b51a557b4db0040a0ad97b44d9",
     "v2": "8a2d4a5b038f148e3ae8b4121ea1122e20734e08cf3a5d5cb6b5263f590b8980",
+    "v3": "7a036a4219851ed10663adbe0850ea46aa500b232e36c322009c169694c1ebbe",
 }
 _MANIFEST_FIELDS = {"schema_version", "version", "instructions_sha256"}
 
