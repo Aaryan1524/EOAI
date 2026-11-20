@@ -59,6 +59,16 @@ PINNED_CORE_SHA256 = {
     "audit.py": "9da938897d1a5a6c2cff0450a44ed3e2919ce75e81540aa838da5590b654b0a5",
 }
 ARMS = ("guard", "guard_noveto", "naive")
+# Amendment 1 (docs/comparative-preregistration.md, Deviations): the pre-registered 20+10 buffer overflows
+# GUARD's 128 KiB role-payload cap. Score-blind rule: first case of each family (manifest order) for
+# adaptation; the first four gate families in manifest order for replay. Sized by payload_check.py.
+BUFFERS = {
+    "full": None,
+    "amend1": {
+        "adaptation": ("cmp-a01-sxv", "cmp-a04-qbn", "cmp-a07-qns", "cmp-a10-wwd", "cmp-a14-bcd", "cmp-a18-kbq"),
+        "gate": ("cmp-g01-rtm", "cmp-g02-jtz", "cmp-g04-frx", "cmp-g06-bhp"),
+    },
+}
 POLICY = Policy(pool_size=2, rounds=3, replicates=1)
 DEVEVAL_REPLICATES = 1
 DEADLINE_SECONDS = 180
@@ -231,9 +241,15 @@ def cmd_trial(args) -> None:
     cases = {c.id: _strip(c) for s in suites.values() for c in s.cases}
     training = tuple(c.id for c in suites["adaptation"].cases)
     replay = tuple(c.id for c in suites["gate"].cases)
+    buffer = BUFFERS[args.buffer]
+    if buffer is not None:
+        if not set(buffer["adaptation"]) <= set(training) or not set(buffer["gate"]) <= set(replay):
+            raise ValueError("Amended buffer names cases outside the locked splits")
+        training, replay = buffer["adaptation"], buffer["gate"]
+        cases = {name: cases[name] for name in training + replay}
     seeds = trial_seeds(args.trial)
     write_json(out / "protocol.json", {
-        "phase": "trial", "trial": args.trial, "source": source, "runtime": runtime, "guard_core_sha256": core,
+        "phase": "trial", "trial": args.trial, "buffer": args.buffer, "source": source, "runtime": runtime, "guard_core_sha256": core,
         "suite_digests": {k: v.digest for k, v in suites.items()}, "training": training, "replay": replay,
         "policy": asdict(POLICY), "arms": ARMS, "role_sampling_seeds": seeds, "isolation": access,
         "solver": {"model": MODEL_ID, "sha256": MODEL_SHA256, "settings": model.settings},
@@ -368,6 +384,7 @@ def main() -> int:
         if name == "trial":
             command.add_argument("--trial", type=int, required=True)
             command.add_argument("--arms", nargs="+", default=list(ARMS), choices=ARMS)
+            command.add_argument("--buffer", choices=tuple(BUFFERS), default="full")
         if name == "deveval":
             command.add_argument("--trial-dir", type=Path, required=True)
             command.add_argument("--replicates", type=int, default=DEVEVAL_REPLICATES)

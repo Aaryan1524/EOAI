@@ -187,3 +187,40 @@ development splits.
 
 Fresh-context review of `naive.py`, `runner.py`, `fixtures.py` before locking; findings and their
 resolution are recorded in `docs/comparative-naive-review.md`.
+
+## Deviations
+
+### Amendment 1 — 2026-11-20, reduced adaptation/replay buffer (before any dev-eval result)
+
+**Observed.** Trial 1 under the locked protocol (`runs/comparative/trial-1`): both GUARD arms
+aborted in round 1 before generating any candidate (`ValueError: Candidate could not be generated
+within its retry budget: Invalid or oversized role prompt`). Cause: `experiments/guard/roles.py:29`
+caps a role payload at 128 KiB; GUARD's round-1 regret for the 20+10 buffer serialises to ≈156 KB
+(compact JSON), dominated by 243 "mastered" criteria. The audited GUARD therefore cannot operate
+at the pre-registered buffer size. This is recorded as a result (GUARD ABORTED at 30 tasks;
+ITT = frozen for that trial). Naive RSI's 20-task reflection fit and that arm continues.
+What was seen before this amendment: the abort messages, the aggregate regret counts above, and
+payload byte sizes. No dev-eval result and no per-task oracle result had been examined.
+
+**Why trials 2–3 of the original design are not run.** Checklists and the v0 batch are produced at
+temperature 0, so the overflow is deterministic; further trials would abort identically.
+
+**Amended buffer (score-blind rule fixed before sizing).** Adaptation: the first case of each of
+the six families in manifest order (`cmp-a01, a04, a07, a10, a14, a18`). Gate: the first case of
+each family in manifest order, truncated to the longest prefix whose worst-case GUARD repair payload
+leaves ≥15 KiB headroom under the cap, as computed offline by `experiments/comparative/payload_check.py`
+from the recorded trial-1 v0 reviews (no model calls): 6+6 → 137.7 KB worst-case repair (does not
+fit); 6+5 → 127.9 KB (fits, <4 KiB headroom); **6+4 → 112.6 KB (selected)** = `cmp-g01, g02, g04, g06`
+(inventory, review, conflict, escalate_one). Sizes depend on v0 failure evidence, but only the prefix
+length was chosen from them, by the stated rule. Worst case assumes a contrast on every task, a full
+3-round ledger and one 2.5 KB rule per promotion.
+
+**Unchanged.** All three adaptive arms use the same amended buffer (Naive trains on the same six
+tasks). Dev-eval stays at all 30 cases (it never passes through a role prompt). Policy, seeds,
+limits, arms, metrics, UNKNOWN threshold and the decision rule are unchanged. GUARD code unchanged.
+Amended trials run in `runs/comparative/amend1/trial-t` with `--buffer amend1`, t = 1..3 under §5.
+The original trial 1 (full buffer) is completed for Naive and reported as supplementary.
+
+**Consequences for interpretation.** Six adaptation tasks give each adaptive arm much less
+training signal; four replay tasks give Soft-HURT coarser regression detection than designed. Dev-eval
+power is unchanged. Coverage of the gate is missing escalate_account and paged_review.
