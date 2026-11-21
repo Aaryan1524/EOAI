@@ -1,0 +1,322 @@
+{
+ "deveval": {
+  "comparisons": {
+   "guard-frozen": {
+    "ci95_bootstrap": [
+     0.0,
+     0.0
+    ],
+    "mean_diff": 0.0,
+    "p_permutation": 1.0
+   },
+   "guard-guard_noveto": {
+    "ci95_bootstrap": [
+     0.0,
+     0.0
+    ],
+    "mean_diff": 0.0,
+    "p_permutation": 1.0
+   },
+   "guard-naive": {
+    "ci95_bootstrap": [
+     -0.1,
+     0.16666666666666666
+    ],
+    "mean_diff": 0.03333333333333333,
+    "p_permutation": 1.0
+   },
+   "guard_noveto-frozen": {
+    "ci95_bootstrap": [
+     0.0,
+     0.0
+    ],
+    "mean_diff": 0.0,
+    "p_permutation": 1.0
+   },
+   "naive-frozen": {
+    "ci95_bootstrap": [
+     -0.16666666666666666,
+     0.1
+    ],
+    "mean_diff": -0.03333333333333333,
+    "p_permutation": 1.0
+   }
+  },
+  "family_pass_rate": {
+   "frozen": {
+    "conflict": 1.0,
+    "escalate_account": 0.6,
+    "escalate_one": 1.0,
+    "inventory": 1.0,
+    "paged_review": 0.2,
+    "review": 1.0
+   },
+   "guard": {
+    "conflict": 1.0,
+    "escalate_account": 0.6,
+    "escalate_one": 1.0,
+    "inventory": 1.0,
+    "paged_review": 0.2,
+    "review": 1.0
+   },
+   "guard_noveto": {
+    "conflict": 1.0,
+    "escalate_account": 0.6,
+    "escalate_one": 1.0,
+    "inventory": 1.0,
+    "paged_review": 0.2,
+    "review": 1.0
+   },
+   "naive": {
+    "conflict": 1.0,
+    "escalate_account": 0.0,
+    "escalate_one": 1.0,
+    "inventory": 1.0,
+    "paged_review": 0.6,
+    "review": 1.0
+   }
+  },
+  "per_trial": [
+   {
+    "arms": {
+     "frozen": {
+      "digest": "1fa60c0f72a62c160458150ae37dfbe8044e41258f5ec7c2adf2ed68e2455bd1",
+      "pass_rate": 0.8,
+      "shared_with_frozen": false
+     },
+     "guard": {
+      "digest": "1fa60c0f72a62c160458150ae37dfbe8044e41258f5ec7c2adf2ed68e2455bd1",
+      "newly_broken": [],
+      "pass_rate": 0.8,
+      "recovered": [],
+      "shared_with_frozen": true
+     },
+     "guard_noveto": {
+      "digest": "1fa60c0f72a62c160458150ae37dfbe8044e41258f5ec7c2adf2ed68e2455bd1",
+      "newly_broken": [],
+      "pass_rate": 0.8,
+      "recovered": [],
+      "shared_with_frozen": true
+     },
+     "naive": {
+      "digest": "a62ffe47d8683dbfc3ef7d70081ca8c4a51a9fb723d7c30c32d124b9c33405ba",
+      "newly_broken": [
+       "cmp-e22-tts",
+       "cmp-e23-grt",
+       "cmp-e25-bgz"
+      ],
+      "pass_rate": 0.7666666666666667,
+      "recovered": [
+       "cmp-e26-fqw",
+       "cmp-e29-lfq"
+      ],
+      "shared_with_frozen": false
+     }
+    },
+    "dir": "runs/comparative/deveval-1"
+   }
+  ],
+  "task_mean_pass_rate": {
+   "frozen": 0.8,
+   "guard": 0.8,
+   "guard_noveto": 0.8,
+   "naive": 0.7666666666666667
+  }
+ },
+ "trials": [
+  {
+   "dir": "runs/comparative/trial-1",
+   "evaluable": true,
+   "guard": {
+    "cost": {
+     "context_saturation_calls": 0,
+     "max_role_input_tokens": 0,
+     "role": {
+      "candidate-generator/distill:calls": 4,
+      "candidate-generator/distill:seconds": 0.0028192908503115177,
+      "candidate-generator/distill:tokens": 0,
+      "status:invalid_request": 4
+     },
+     "role_calls": 4,
+     "role_seconds": 0.0028192908503115177,
+     "role_tokens": 0,
+     "solver_rollouts": 0,
+     "solver_seconds": 0,
+     "solver_tokens": 0
+    },
+    "decisions": [],
+    "gate_audit": [],
+    "judgments": {
+     "attempt_errors": {},
+     "retried": 0,
+     "rollouts": 0,
+     "semantic_judgments": 0,
+     "unresolved": 0,
+     "unresolved_items": [],
+     "unresolved_rate": null
+    },
+    "self_review_vs_oracle": {
+     "accuracy": 0.8333333333333334,
+     "false_negative_rate": 0.21739130434782608,
+     "false_positive_rate": 0.0,
+     "fn": 5,
+     "fp": 0,
+     "n": 30,
+     "tn": 7,
+     "tp": 18
+    },
+    "status": {
+     "arm": "guard",
+     "completed": false,
+     "error": "ValueError: Candidate could not be generated within its retry budget: Invalid or oversized role prompt",
+     "seconds": 0.019652128219604492
+    }
+   },
+   "guard_noveto": {
+    "cost": {
+     "context_saturation_calls": 0,
+     "max_role_input_tokens": 0,
+     "role": {
+      "candidate-generator/distill:calls": 4,
+      "candidate-generator/distill:seconds": 0.0027642088243737817,
+      "candidate-generator/distill:tokens": 0,
+      "status:invalid_request": 4
+     },
+     "role_calls": 4,
+     "role_seconds": 0.0027642088243737817,
+     "role_tokens": 0,
+     "solver_rollouts": 0,
+     "solver_seconds": 0,
+     "solver_tokens": 0
+    },
+    "decisions": [],
+    "gate_audit": [],
+    "judgments": {
+     "attempt_errors": {},
+     "retried": 0,
+     "rollouts": 0,
+     "semantic_judgments": 0,
+     "unresolved": 0,
+     "unresolved_items": [],
+     "unresolved_rate": null
+    },
+    "self_review_vs_oracle": {
+     "accuracy": 0.8333333333333334,
+     "false_negative_rate": 0.21739130434782608,
+     "false_positive_rate": 0.0,
+     "fn": 5,
+     "fp": 0,
+     "n": 30,
+     "tn": 7,
+     "tp": 18
+    },
+    "status": {
+     "arm": "guard_noveto",
+     "completed": false,
+     "error": "ValueError: Candidate could not be generated within its retry budget: Invalid or oversized role prompt",
+     "seconds": 0.00944209098815918
+    }
+   },
+   "naive": {
+    "cost": {
+     "context_saturation_calls": 0,
+     "max_role_input_tokens": 16999,
+     "role": {
+      "candidate-generator/distill:calls": 8,
+      "candidate-generator/distill:seconds": 462.65051149891224,
+      "candidate-generator/distill:tokens": 137192,
+      "reviewer/criterion:calls": 216,
+      "reviewer/criterion:seconds": 1524.8570638417732,
+      "reviewer/criterion:tokens": 979408,
+      "status:ok": 224
+     },
+     "role_calls": 224,
+     "role_seconds": 1987.5075753406854,
+     "role_tokens": 1116600,
+     "solver_rollouts": 120,
+     "solver_seconds": 1901.209829126601,
+     "solver_tokens": 4115840
+    },
+    "decisions": [
+     {
+      "decision": "accept",
+      "reasons": null,
+      "round": 1
+     },
+     {
+      "decision": "accept",
+      "reasons": null,
+      "round": 2
+     },
+     {
+      "decision": "accept",
+      "reasons": null,
+      "round": 3
+     }
+    ],
+    "gate_audit": null,
+    "judgments": {
+     "attempt_errors": {},
+     "retried": 0,
+     "rollouts": 120,
+     "semantic_judgments": 216,
+     "unresolved": 0,
+     "unresolved_items": [],
+     "unresolved_rate": 0.0
+    },
+    "self_review_vs_oracle": {
+     "accuracy": 0.8,
+     "false_negative_rate": 0.2912621359223301,
+     "false_positive_rate": 0.0,
+     "fn": 30,
+     "fp": 0,
+     "n": 150,
+     "tn": 47,
+     "tp": 73
+    },
+    "status": {
+     "arm": "naive",
+     "baseline": "41113e51b419729b2b71c923d8e511e696b5e3dc32664103e6cfc3629b1ca643",
+     "completed": true,
+     "final": "a62ffe47d8683dbfc3ef7d70081ca8c4a51a9fb723d7c30c32d124b9c33405ba",
+     "seconds": 3763.943367958069
+    }
+   },
+   "shared_v0": {
+    "cost": {
+     "context_saturation_calls": 0,
+     "max_role_input_tokens": 12130,
+     "role": {
+      "reviewer/checklist:calls": 30,
+      "reviewer/checklist:seconds": 167.96258354384918,
+      "reviewer/checklist:tokens": 75268,
+      "reviewer/criterion:calls": 54,
+      "reviewer/criterion:seconds": 381.9678023669403,
+      "reviewer/criterion:tokens": 245791,
+      "status:ok": 84
+     },
+     "role_calls": 84,
+     "role_seconds": 549.9303859107895,
+     "role_tokens": 321059,
+     "solver_rollouts": 30,
+     "solver_seconds": 440.2633169995388,
+     "solver_tokens": 911698
+    },
+    "judgments": {
+     "attempt_errors": {},
+     "retried": 0,
+     "rollouts": 30,
+     "semantic_judgments": 54,
+     "unresolved": 0,
+     "unresolved_items": [],
+     "unresolved_rate": 0.0
+    },
+    "required_write_failures": [
+     "cmp-a15-wpf",
+     "cmp-a17-kkj"
+    ]
+   },
+   "trial_unresolved_rate": 0.0
+  }
+ ]
+}

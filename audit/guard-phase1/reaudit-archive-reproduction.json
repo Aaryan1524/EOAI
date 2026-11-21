@@ -1,0 +1,401 @@
+{
+  "archive_sha256": "2a181823891314966f1bfebb3b43d30249a1e4bbbabe0ef5d4fc7205261a71e3",
+  "archive_unchanged": true,
+  "archived_proposal_rejections": {
+    "r1-candidate-0.json": "Rule refers to evaluation feedback or identifiers",
+    "r1-candidate-1.json": "Rule refers to evaluation feedback or identifiers"
+  },
+  "calibration": {
+    "corrected_comparable": 6,
+    "corrected_perfect": 3,
+    "corrected_perfect_false_pass": 0,
+    "old_invalid_verdicts": 12,
+    "old_perfect": 4,
+    "old_perfect_false_pass": 1,
+    "semantic_verdicts": 31
+  },
+  "corrected_gate": {
+    "helped": [],
+    "hurt": [],
+    "hurt_penalty": null,
+    "net_gain": null,
+    "promoted": false,
+    "reasons": [
+      "unreliable_review",
+      "required_action_incomplete"
+    ],
+    "repair_eligible": false,
+    "required_gain": null
+  },
+  "deterministic_only_gate": {
+    "helped": [],
+    "hurt": [],
+    "hurt_penalty": 0.0,
+    "net_gain": 2.0,
+    "promoted": false,
+    "reasons": [
+      "required_action_incomplete"
+    ],
+    "repair_eligible": false,
+    "required_gain": 0.0
+  },
+  "original_gate": {
+    "helped": [
+      "compound-escalation"
+    ],
+    "hurt": [],
+    "hurt_penalty": 0.0,
+    "net_gain": 1.1363636363636374,
+    "promoted": true,
+    "reasons": [],
+    "repair_eligible": false,
+    "required_gain": 0.0
+  },
+  "pure_math_deterministic_only_counterfactual": {
+    "helped": [],
+    "hurt": [],
+    "hurt_penalty": 0.0,
+    "net_gain": 2.0,
+    "promoted": true,
+    "reasons": [],
+    "repair_eligible": false,
+    "required_gain": 0.0
+  },
+  "trial_count": 17,
+  "trials": {
+    "post-acme-account-escalation-1": {
+      "archived": {
+        "continuous": 80.0,
+        "strict": 40.0
+      },
+      "corrected_known_criteria_score": {
+        "continuous": 100.0,
+        "strict": 100.0
+      },
+      "corrected_review_comparable": false,
+      "deterministic_only_score": {
+        "continuous": 100.0,
+        "strict": 100.0
+      },
+      "independent_pass": true,
+      "required_action_completion": {
+        "criterion_id": "eoai_required_action_completion",
+        "passed": true,
+        "rationale": "Verified 1 required persisted action(s) by receipt and read-back."
+      },
+      "task_id": "acme-account-escalation"
+    },
+    "post-acme-list-1": {
+      "archived": {
+        "continuous": 100.0,
+        "strict": 100.0
+      },
+      "corrected_known_criteria_score": {
+        "continuous": 100.0,
+        "strict": 100.0
+      },
+      "corrected_review_comparable": true,
+      "deterministic_only_score": {
+        "continuous": 100.0,
+        "strict": 100.0
+      },
+      "independent_pass": true,
+      "required_action_completion": null,
+      "task_id": "acme-list"
+    },
+    "post-acme-paged-v2-1": {
+      "archived": {
+        "continuous": 55.55555555555556,
+        "strict": 0.0
+      },
+      "corrected_known_criteria_score": {
+        "continuous": 55.55555555555556,
+        "strict": 0.0
+      },
+      "corrected_review_comparable": true,
+      "deterministic_only_score": {
+        "continuous": 42.857142857142854,
+        "strict": 0.0
+      },
+      "independent_pass": false,
+      "required_action_completion": null,
+      "task_id": "acme-paged-v2"
+    },
+    "post-compound-escalation-1": {
+      "archived": {
+        "continuous": 90.9090909090909,
+        "strict": 45.45454545454545
+      },
+      "corrected_known_criteria_score": {
+        "continuous": 90.9090909090909,
+        "strict": 45.45454545454545
+      },
+      "corrected_review_comparable": false,
+      "deterministic_only_score": {
+        "continuous": 90.0,
+        "strict": 45.0
+      },
+      "independent_pass": false,
+      "required_action_completion": {
+        "criterion_id": "eoai_required_action_completion",
+        "passed": false,
+        "rationale": "Missing required persisted action: ticket.create for INV-H01."
+      },
+      "task_id": "compound-escalation"
+    },
+    "post-meridian-conflict-1": {
+      "archived": {
+        "continuous": 75.0,
+        "strict": 0.0
+      },
+      "corrected_known_criteria_score": {
+        "continuous": 85.71428571428571,
+        "strict": 0.0
+      },
+      "corrected_review_comparable": false,
+      "deterministic_only_score": {
+        "continuous": 83.33333333333333,
+        "strict": 0.0
+      },
+      "independent_pass": true,
+      "required_action_completion": null,
+      "task_id": "meridian-conflict"
+    },
+    "r1-c0-acme-account-escalation-1": {
+      "archived": {
+        "continuous": 90.0,
+        "strict": 45.0
+      },
+      "corrected_known_criteria_score": {
+        "continuous": 100.0,
+        "strict": 100.0
+      },
+      "corrected_review_comparable": false,
+      "deterministic_only_score": {
+        "continuous": 100.0,
+        "strict": 100.0
+      },
+      "independent_pass": true,
+      "required_action_completion": {
+        "criterion_id": "eoai_required_action_completion",
+        "passed": true,
+        "rationale": "Verified 1 required persisted action(s) by receipt and read-back."
+      },
+      "task_id": "acme-account-escalation"
+    },
+    "r1-c0-acme-paged-v2-1": {
+      "archived": {
+        "continuous": 44.44444444444444,
+        "strict": 0.0
+      },
+      "corrected_known_criteria_score": {
+        "continuous": 50.0,
+        "strict": 0.0
+      },
+      "corrected_review_comparable": false,
+      "deterministic_only_score": {
+        "continuous": 42.857142857142854,
+        "strict": 0.0
+      },
+      "independent_pass": false,
+      "required_action_completion": null,
+      "task_id": "acme-paged-v2"
+    },
+    "r1-c1-acme-account-escalation-1": {
+      "archived": {
+        "continuous": 90.0,
+        "strict": 45.0
+      },
+      "corrected_known_criteria_score": {
+        "continuous": 100.0,
+        "strict": 100.0
+      },
+      "corrected_review_comparable": false,
+      "deterministic_only_score": {
+        "continuous": 100.0,
+        "strict": 100.0
+      },
+      "independent_pass": true,
+      "required_action_completion": {
+        "criterion_id": "eoai_required_action_completion",
+        "passed": true,
+        "rationale": "Verified 1 required persisted action(s) by receipt and read-back."
+      },
+      "task_id": "acme-account-escalation"
+    },
+    "r1-c1-acme-paged-v2-1": {
+      "archived": {
+        "continuous": 44.44444444444444,
+        "strict": 0.0
+      },
+      "corrected_known_criteria_score": {
+        "continuous": 50.0,
+        "strict": 0.0
+      },
+      "corrected_review_comparable": false,
+      "deterministic_only_score": {
+        "continuous": 42.857142857142854,
+        "strict": 0.0
+      },
+      "independent_pass": false,
+      "required_action_completion": null,
+      "task_id": "acme-paged-v2"
+    },
+    "r1-replay-acme-list-1": {
+      "archived": {
+        "continuous": 100.0,
+        "strict": 100.0
+      },
+      "corrected_known_criteria_score": {
+        "continuous": 100.0,
+        "strict": 100.0
+      },
+      "corrected_review_comparable": true,
+      "deterministic_only_score": {
+        "continuous": 100.0,
+        "strict": 100.0
+      },
+      "independent_pass": true,
+      "required_action_completion": null,
+      "task_id": "acme-list"
+    },
+    "r1-replay-compound-escalation-1": {
+      "archived": {
+        "continuous": 100.0,
+        "strict": 100.0
+      },
+      "corrected_known_criteria_score": {
+        "continuous": 91.66666666666667,
+        "strict": 45.833333333333336
+      },
+      "corrected_review_comparable": true,
+      "deterministic_only_score": {
+        "continuous": 90.0,
+        "strict": 45.0
+      },
+      "independent_pass": false,
+      "required_action_completion": {
+        "criterion_id": "eoai_required_action_completion",
+        "passed": false,
+        "rationale": "Missing required persisted action: ticket.create for INV-H01."
+      },
+      "task_id": "compound-escalation"
+    },
+    "r1-replay-meridian-conflict-1": {
+      "archived": {
+        "continuous": 75.0,
+        "strict": 0.0
+      },
+      "corrected_known_criteria_score": {
+        "continuous": 85.71428571428571,
+        "strict": 0.0
+      },
+      "corrected_review_comparable": false,
+      "deterministic_only_score": {
+        "continuous": 83.33333333333333,
+        "strict": 0.0
+      },
+      "independent_pass": true,
+      "required_action_completion": null,
+      "task_id": "meridian-conflict"
+    },
+    "v0-acme-account-escalation-1": {
+      "archived": {
+        "continuous": 90.0,
+        "strict": 45.0
+      },
+      "corrected_known_criteria_score": {
+        "continuous": 100.0,
+        "strict": 100.0
+      },
+      "corrected_review_comparable": false,
+      "deterministic_only_score": {
+        "continuous": 100.0,
+        "strict": 100.0
+      },
+      "independent_pass": true,
+      "required_action_completion": {
+        "criterion_id": "eoai_required_action_completion",
+        "passed": true,
+        "rationale": "Verified 1 required persisted action(s) by receipt and read-back."
+      },
+      "task_id": "acme-account-escalation"
+    },
+    "v0-acme-list-1": {
+      "archived": {
+        "continuous": 100.0,
+        "strict": 100.0
+      },
+      "corrected_known_criteria_score": {
+        "continuous": 100.0,
+        "strict": 100.0
+      },
+      "corrected_review_comparable": true,
+      "deterministic_only_score": {
+        "continuous": 100.0,
+        "strict": 100.0
+      },
+      "independent_pass": true,
+      "required_action_completion": null,
+      "task_id": "acme-list"
+    },
+    "v0-acme-paged-v2-1": {
+      "archived": {
+        "continuous": 44.44444444444444,
+        "strict": 0.0
+      },
+      "corrected_known_criteria_score": {
+        "continuous": 50.0,
+        "strict": 0.0
+      },
+      "corrected_review_comparable": false,
+      "deterministic_only_score": {
+        "continuous": 42.857142857142854,
+        "strict": 0.0
+      },
+      "independent_pass": false,
+      "required_action_completion": null,
+      "task_id": "acme-paged-v2"
+    },
+    "v0-compound-escalation-1": {
+      "archived": {
+        "continuous": 81.81818181818181,
+        "strict": 40.90909090909091
+      },
+      "corrected_known_criteria_score": {
+        "continuous": 81.81818181818181,
+        "strict": 40.90909090909091
+      },
+      "corrected_review_comparable": false,
+      "deterministic_only_score": {
+        "continuous": 80.0,
+        "strict": 40.0
+      },
+      "independent_pass": false,
+      "required_action_completion": {
+        "criterion_id": "eoai_required_action_completion",
+        "passed": false,
+        "rationale": "Missing required persisted action: ticket.create for INV-H01."
+      },
+      "task_id": "compound-escalation"
+    },
+    "v0-meridian-conflict-1": {
+      "archived": {
+        "continuous": 87.5,
+        "strict": 0.0
+      },
+      "corrected_known_criteria_score": {
+        "continuous": 87.5,
+        "strict": 0.0
+      },
+      "corrected_review_comparable": true,
+      "deterministic_only_score": {
+        "continuous": 83.33333333333333,
+        "strict": 0.0
+      },
+      "independent_pass": true,
+      "required_action_completion": null,
+      "task_id": "meridian-conflict"
+    }
+  }
+}
