@@ -289,6 +289,11 @@ harness`**: the proposer produced an already-seen harness three times
 in a row. In the locked study this aborts the arm, and the arm is scored
 as frozen (intention to treat).
 
+**Two isolation tests fail with `realpath: ... Operation not permitted`**:
+the Seatbelt profile is checked against uv-managed CPython. Homebrew
+Python's framework layout falls outside it. Recreate the venv with
+`UV_PYTHON=3.12.14 UV_PYTHON_PREFERENCE=only-managed uv sync --locked --extra test --no-install-project`.
+
 **Held-out command refuses to start on Linux**: worker isolation needs
 macOS `sandbox-exec`. This is intentional fail-closed behaviour.
 
