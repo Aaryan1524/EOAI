@@ -52,7 +52,8 @@ Use the same default-deny launcher for all future improvement workers. Run
 no worker code as the unrestricted custodian account. The checks establish
 isolation for processes started through the launcher. The underlying host,
 Python environment, and model service are trusted. Hosts that cannot apply the
-kernel policy fail closed. GUARD workers are not part of this repository.
+kernel policy fail closed. GUARD role workers (`experiments/guard/roles.py`)
+run through this launcher.
 
 The evaluator consumes a candidate text bundle after candidate selection
 closes. Pin the suite and source digests, commit, model digest, harness digest,

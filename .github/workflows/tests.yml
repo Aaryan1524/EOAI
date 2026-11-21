@@ -1,0 +1,22 @@
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: macos-latest
+    env:
+      # Match the study interpreter (uv-managed CPython 3.12.14); the Seatbelt
+      # isolation tests depend on its filesystem layout.
+      UV_PYTHON: "3.12.14"
+      UV_PYTHON_PREFERENCE: only-managed
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - run: uv sync --locked --extra test --no-install-project
+      - run: .venv/bin/python -m pytest -q
+        env:
+          PYTHONPATH: src:.

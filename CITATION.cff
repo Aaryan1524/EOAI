@@ -1,0 +1,20 @@
+cff-version: 1.2.0
+message: "If you use this work, please cite it as below."
+title: "EOAI × GUARD: a pre-registered blind test of regret-guided agent self-improvement"
+type: software
+authors:
+  - name: "Aaryan"
+repository-code: "https://github.com/Aaryan1524/EOAI"
+license: Apache-2.0
+date-released: "2026-11-21"
+keywords:
+  - recursive self-improvement
+  - LLM agents
+  - tool use
+  - evaluation
+  - pre-registration
+references:
+  - type: article
+    title: "GUARD: Stabilizing Recursive Self-Improvement with Regret Guidance"
+    year: 2026
+    url: "https://arxiv.org/abs/2611.23476"
