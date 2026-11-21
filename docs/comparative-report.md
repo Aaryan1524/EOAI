@@ -11,10 +11,13 @@ plus Soft-HURT gating, did better than plain self-improvement. The audited GUARD
 the pre-registered scale, and it aborted in 2 of its 6 arm-runs (counting the no-veto ablation).
 
 Pins: experiment branch `experiment/guard-comparative`, based on PR #11 merge 9a17c5b. Pre-registration is
-tag `guard-comparative-prereg-v1` (9577971). Amendments are tags `guard-comparative-amend1` (00ada9f) and
-`guard-comparative-amend2` (8fd1ab3). GUARD core files are byte-identical to the audited revision and are
+tag `guard-comparative-prereg-v1` (4817aac). Amendments are tags `guard-comparative-amend1` (f6449bb) and
+`guard-comparative-amend2` (c339f7e). GUARD core files are byte-identical to the audited revision and are
 checked at every phase. Raw evidence is in `runs/comparative/` (git-ignored). Private fixtures and answers
 are in `~/EOAI-private/comparative-v1`. The sealed held-out suite was never touched.
+Commit messages on this branch were edited after the runs; file trees are unchanged (tree IDs: pre-registration
+8075ce6, amendment 1 3a7d2db, amendment 2 a4a7fe6). Run records in `runs/` cite the earlier commit IDs 9577971,
+00ada9f and 8fd1ab3 for those same trees.
 
 ## 1. What was run
 
