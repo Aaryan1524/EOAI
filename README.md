@@ -65,45 +65,80 @@ uv sync --locked --extra test --no-install-project && PYTHONPATH=src:. .venv/bin
 
 Full analysis: [`docs/comparative-report.md`](docs/comparative-report.md).
 
-## Why this project exists
+## Why I built this
 
-- **Self-improvement claims are hard to check.** Most demos score the
-  agent with the same model that improved it. Here the scorer is plain
-  code with private answers, outside the improvement loop.
-- **Pre-registered before any score was seen.** Splits, seeds, budgets,
-  metrics and the decision rule are tagged in git
-  (`guard-comparative-prereg-v1`); both amendments were made before any
-  evaluation result existed and are tagged too.
-- **Negative results stay in.** Aborts, a naive-arm regression, analysis
-  bugs fixed after the fact: all disclosed in the report.
-- **The agent is real enough to fail.** Pagination, draft vs signed
-  amendments, disputes, duplicate tickets, schema drift, injected tool
-  faults and prompt injection are in the fixtures, and money, dates and
-  permissions are enforced by code, never by the model.
+I wanted to know whether GUARD's extra machinery (regret-ranked
+feedback, contrastive prompt evolution, the Soft-HURT regression gate)
+earns its cost on an agent doing real multi-step work, scored by
+something other than the improver itself. Most self-improvement
+results I had read are graded by the same model that did the
+improving, so a stricter or more lenient reviewer moves the headline.
 
-```
-task ─► EOAI agent ─► typed tool gateway ─► SQLite sandbox
-            ▲                                      │
-   harness text (the only thing that changes)      ▼
-            │                              trace + final state
- GUARD / naive loop ◄── self-review ◄──────────────┤
-                                                   ▼
-                              independent oracle (private answers)
-```
+So I built the agent first. Milestones 1–6 cover the domain, tools,
+runtime, hardening, compound workflows and replay. Money, dates,
+permissions and write safety are enforced in code, never by the model.
+Only then did I implement GUARD from the paper and run two adversarial
+audits against it (kept in [`audit/`](audit/guard-phase1/)). After
+that I locked a pre-registration and ran the comparison. Every failure
+stays in the record: the aborts, both amendments, and the analysis
+bugs I fixed after seeing results.
+
+## How the study works
 
 ```mermaid
 flowchart LR
-    subgraph Improvement["Improvement loop (no access to answers)"]
-        R[Self-review] --> G[Regret report]
+    subgraph Improvement["Improvement loop: never sees answers"]
+        R[Self-review against frozen checklist] --> G[Regret report]
         G --> P[Proposer: 2 candidate edits]
         P --> Gate[Soft-HURT gate + write veto]
-        Gate -->|promote| H[Harness vN+1]
+        Gate -->|promote| H[Harness text vN+1]
     end
     H --> A[EOAI agent, frozen model]
-    A --> T[Tool gateway] --> S[(Sandbox)]
-    S --> O[Independent oracle]
+    A --> T[Typed tool gateway] --> S[(SQLite sandbox)]
     A --> R
+    S --> O[Oracle: private answers, scores after exit]
 ```
+
+**What can change.** Only the harness, three strings: `instructions`,
+`skills`, `memory`. Each proposal adds one bounded `[iff condition]`
+rule. The model, tools, budgets, policies and fixtures are frozen and
+checked by digest on every run.
+
+**Arms.** All four start from the same harness and share one frozen
+self-review checklist and one baseline batch per trial.
+
+| Arm | What it does |
+|---|---|
+| A. Frozen | No adaptation |
+| B. Naive | Reflect on failed tasks, propose 2 edits with GUARD's own proposer prompt, always promote the best training score. No ranking, replay or gate. |
+| C. GUARD | `experiments/guard/loop.py`, unchanged from the audited revision |
+| C′. GUARD without veto | C with only the mandatory-write veto removed. It shares C's sampling seeds, so the veto is the only systematic difference. |
+
+Budgets for B, C and C′: 3 rounds, 2 candidates per round, 1
+replicate. GUARD's gate settings are a noise floor of 15 points, a
+hurt budget of 1 task, a margin of 1.5 and 1 repair.
+
+**Data.** I wrote a seeded generator (`experiments/comparative/fixtures.py`,
+seed 20261120) covering six task families: inventory, review,
+amendment conflict, single escalation, account escalation, and paged
+review. Every case gets its own tenant and SQLite lineage. Each
+expected outcome comes from a hand calculator and is cross-checked
+against the frozen policy engine.
+
+| Split | Size | Seen by |
+|---|---|---|
+| Adaptation | 20 pre-registered, 6 used | B, C, C′ (answers blanked) |
+| Gate / replay | 10 pre-registered, 4 used | C, C′ only |
+| Dev-eval | 30 | the oracle only |
+
+**Scoring.** The oracle is plain code. It compares the final database
+state, created tickets and final report against the private
+expectations, after the agent process has exited. Each arm's final
+harness runs every dev-eval task once per trial over 3 trials, and the
+task is the unit of analysis. An aborted arm is scored as frozen
+(intention to treat). Differences are tested with an exact sign-flip
+permutation test over tasks, plus a percentile bootstrap CI. The
+conclusion is picked by a rule written down in advance.
 
 ---
 
@@ -118,8 +153,8 @@ flowchart LR
   how v2 will be run.
 - **[GUARD implementation](docs/guard-phase-1.md)** and
   **[audit remediation](docs/guard-phase-1-remediation.md)**: how the
-  paper was mapped to code, and what two independent audits changed.
-- **[Naive arm review](docs/comparative-naive-review.md)**: independent
+  paper was mapped to code, and what two adversarial audits changed.
+- **[Naive arm review](docs/comparative-naive-review.md)**: separate
   review of the baseline self-improvement arm.
 - **[Sandbox and agent guide](docs/eoai-sandbox.md)**: tools, runs,
   replay, the `ops-agent` CLI.
@@ -148,7 +183,7 @@ EOAI/
 │   └── datasets/              manifest schemas
 ├── docs/                      reports, pre-registration, design records
 │   └── comparative-results/   committed analysis JSON (no answers inside)
-├── audit/guard-phase1/        the two independent audits and the preflight
+├── audit/guard-phase1/        two adversarial audits and the preflight
 ├── tests/                     416 tests: domain, tools, runner, GUARD, isolation
 └── runs/                      run artifacts (git-ignored)
 ```
