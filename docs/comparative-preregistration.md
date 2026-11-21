@@ -224,3 +224,23 @@ The original trial 1 (full buffer) is completed for Naive and reported as supple
 **Consequences for interpretation.** Six adaptation tasks give each adaptive arm much less
 training signal; four replay tasks give Soft-HURT coarser regression detection than designed. Dev-eval
 power is unchanged. Coverage of the gate is missing escalate_account and paged_review.
+
+### Amendment 2 — 2026-11-21, role timeout 90 s → 300 s (before any dev-eval result of an amended trial)
+
+**Observed.** Amended trial 1 (`runs/comparative/amend1/trial-1`): GUARD completed round 1 (decision:
+reject) and aborted in round 2 with `ModelError: Ollama request timed out` after both pool proposals
+returned `provider_failed` at the 90 s role timeout. Round-1 proposals already took 69.7 s and 76.6 s for
+≈16.9 K input tokens; the round-2 regret grew from 41 KB to 55 KB. Ollama serves one request at a time
+(`OLLAMA_NUM_PARALLEL=1`) at ≈400 prompt tokens/s, so the two concurrent pool calls queue. `ModelError` is
+not caught by GUARD's proposal retry, so a slow provider aborts the arm. The trial was stopped before
+GUARD-without-veto (same seeds, same round 1) reached the same point; Naive and dev-eval had not run.
+Seen: the abort, role latencies/token counts, the round-1 decision label. No oracle or dev-eval result.
+
+**Change.** `--role-timeout 300` (the maximum `RoleModel` accepts) for every role call in every arm and
+for checklists. Worst-case Amendment-1 prompt ≈ 31 K tokens fits the 32 768-token context; two queued
+worst-case calls need ≈170 s. No code change. Fresh directories `runs/comparative/amend2/trial-t`, same
+buffer (amend1), seeds and protocol otherwise. Both aborted runs are retained and reported. The analysis
+additionally flags any role call with input tokens ≥ 30 000 (context-saturation risk).
+
+**Interpretation.** GUARD as audited needs ≈3× the pre-registered role latency budget on this host and has
+no tolerance for provider timeouts; this is an operational-cost finding reported under Q6.

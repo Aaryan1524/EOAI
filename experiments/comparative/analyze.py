@@ -216,7 +216,9 @@ def cost(directory: Path) -> dict:
         by[key + ":seconds"] += m["latency_seconds"]
         by[f"status:{m['status']}"] += 1
     solver_tokens = sum(r["metrics"].get("input_tokens", 0) + r["metrics"].get("output_tokens", 0) for r in rows)
-    return {"role": dict(by), "role_calls": len(metrics),
+    saturated = [m for m in metrics if (m.get("input_tokens") or 0) >= 30_000]
+    return {"role": dict(by), "role_calls": len(metrics), "context_saturation_calls": len(saturated),
+            "max_role_input_tokens": max((m.get("input_tokens") or 0 for m in metrics), default=0),
             "role_tokens": sum(m["input_tokens"] + m["output_tokens"] for m in metrics),
             "role_seconds": sum(m["latency_seconds"] for m in metrics),
             "solver_rollouts": len(rows), "solver_tokens": solver_tokens,
