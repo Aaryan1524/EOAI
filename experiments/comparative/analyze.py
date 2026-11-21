@@ -79,7 +79,7 @@ def _batch_scores(rows_by_file, prefix, tasks):
 def gate_audit(trial: Path, arm: str, oracle: dict) -> list[dict]:
     """Per gate call: paper Soft-HURT decision, actual decision, incumbent write failures, oracle change."""
     arm_dir = trial / arm
-    if not (arm_dir / "selection.json").exists():
+    if not any(arm_dir.glob("r*-decision.json")):
         return []
     protocol = _json(trial / "protocol.json")
     training, replay = tuple(protocol["training"]), tuple(protocol["replay"])
@@ -212,14 +212,14 @@ def cost(directory: Path) -> dict:
     for m in metrics:
         key = f"{m['role']}/{m['purpose']}"
         by[key + ":calls"] += 1
-        by[key + ":tokens"] += m["input_tokens"] + m["output_tokens"]
+        by[key + ":tokens"] += (m["input_tokens"] or 0) + (m["output_tokens"] or 0)
         by[key + ":seconds"] += m["latency_seconds"]
         by[f"status:{m['status']}"] += 1
     solver_tokens = sum(r["metrics"].get("input_tokens", 0) + r["metrics"].get("output_tokens", 0) for r in rows)
     saturated = [m for m in metrics if (m.get("input_tokens") or 0) >= 30_000]
     return {"role": dict(by), "role_calls": len(metrics), "context_saturation_calls": len(saturated),
             "max_role_input_tokens": max((m.get("input_tokens") or 0 for m in metrics), default=0),
-            "role_tokens": sum(m["input_tokens"] + m["output_tokens"] for m in metrics),
+            "role_tokens": sum((m["input_tokens"] or 0) + (m["output_tokens"] or 0) for m in metrics),
             "role_seconds": sum(m["latency_seconds"] for m in metrics),
             "solver_rollouts": len(rows), "solver_tokens": solver_tokens,
             "solver_seconds": sum(r["metrics"].get("elapsed_seconds", 0) for r in rows)}
