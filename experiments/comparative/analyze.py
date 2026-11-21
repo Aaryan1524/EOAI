@@ -84,6 +84,7 @@ def gate_audit(trial: Path, arm: str, oracle: dict) -> list[dict]:
     protocol = _json(trial / "protocol.json")
     training, replay = tuple(protocol["training"]), tuple(protocol["replay"])
     rows = {r["_file"]: r for r in reviews(trial / "shared") + reviews(arm_dir)}
+    oracle = dict(oracle)  # local copy: promoted replay entries are aliased below
     incumbent_prefix = "v0"
     out = []
     for decision_path in sorted(arm_dir.glob("r*-decision.json")):
@@ -134,6 +135,10 @@ def gate_audit(trial: Path, arm: str, oracle: dict) -> list[dict]:
                     for f in list(rows):
                         if f.startswith(f"{label}-replay-{t}-"):
                             rows[f.replace(f"{label}-replay", incumbent_prefix, 1)] = rows[f]
+                    for key, entry in list(oracle.items()):
+                        if entry["file"].startswith(f"{label}-replay-{t}-"):
+                            alias = entry["file"].replace(f"{label}-replay", incumbent_prefix, 1)
+                            oracle[alias] = entry | {"file": alias}
     return out
 
 

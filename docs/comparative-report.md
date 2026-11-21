@@ -1,6 +1,7 @@
 # GUARD vs Naive RSI vs Frozen EOAI — blind comparative experiment report
 
-**Conclusion: GUARD SHOWS LIMITED OR CONDITIONAL BENEFIT** (pre-registered rule §9(a): Δ > 0, p ≥ 0.05).
+**Conclusion: GUARD SHOWS LIMITED OR CONDITIONAL BENEFIT** (amended 6+4 buffer; pre-registered rule §9(a):
+Δ > 0, p ≥ 0.05). At the pre-registered 20+10 buffer GUARD was ABORTED (could not run).
 
 In plain terms: after adaptation, GUARD's harness passed more independent tasks than frozen EOAI
 (+8.9 points). The gain did not reach the pre-registered significance level, and nearly all of it came
@@ -70,8 +71,10 @@ No arm showed family-level forgetting in the amended trials.
 - All three adaptive methods mainly learned one fix: following invoice-search continuation cursors in
   paged review. The adaptation buffer contained one paged-review task, and GUARD's round-1 candidates
   target exactly that.
-- The benefit is real in direction: every bootstrap CI vs frozen excludes 0. It is not significant under
-  the pre-registered permutation test, and it is not specific to GUARD.
+- The point estimates are positive for every adaptive arm, but none is significant under the
+  pre-registered permutation test. The percentile bootstrap CIs are shown for completeness; with 30 tasks
+  and few nonzero differences they are anti-conservative and are not used as evidence. The gain is not
+  specific to GUARD.
 
 ## 3. Answers to the six questions
 
@@ -114,6 +117,9 @@ No, measurably.
   buffer (+1, +3). Whether those changes would have survived in GUARD is unknowable, because the
   trajectories differ through solver nondeterminism.
 - **Dev-eval.** GUARD vs no-veto is +1.1 pp, p = 1.0.
+- **Coverage limit.** Step 4's four fields are recorded for every gate winner (16 gate calls across both
+  arms). Non-winning candidates never reach the gate, so the paper decision, veto and oracle fields do not
+  exist for them.
 
 **Q5. How accurately did self-review predict real correctness?**
 - 404 unique adaptation/gate rollouts: accuracy 72.8 %, **false-positive rate 0 %** (0/63 oracle-failed
@@ -144,6 +150,17 @@ Not on this evidence.
   its 128 KiB role cap, and a 3.3× longer role timeout. It aborted in 2/6 amended arm-runs on its
   duplicate-candidate check (`loop.py:361`) and in 3/3 earlier runs on payload or timeout. Naive aborted
   0/4.
+- **Proposal rejections.** Proposal calls exceeded accepted candidates in every arm:
+
+  | Arm | Calls per 6 candidates (completed trials) |
+  |---|---|
+  | GUARD | 6–8 |
+  | No-veto | 6–8 |
+  | Naive | 8–10 |
+
+  The extra calls are format retries, grounding/validation rejections or duplicate regenerations. The
+  role metrics do not record which, so "candidate edits rejected for invalid grounding" cannot be
+  reported separately. This is a limitation of the logging.
 - **Safety.** Zero unwarranted ticket writes in any arm and any run. No source tables were modified. All
   write errors are missed required tickets.
 
@@ -182,8 +199,25 @@ incumbent, costs measurable accuracy.
 Amendment 1 (buffer 20+10 → 6+4, score-blind rule, sized offline) and Amendment 2 (role timeout 90 → 300 s)
 are recorded with their triggers in `docs/comparative-preregistration.md` §Deviations. In both cases only
 abort messages, latencies and payload sizes had been seen, and no oracle or dev-eval result. Analysis code
-fixes after results: null-token handling in cost aggregation, and including the gate audit for aborted arms.
-Neither changes any statistic's definition.
+fixes after results:
+1. null-token handling in cost aggregation;
+2. including the gate audit for aborted arms;
+3. aliasing the oracle entries of a promoted winner's replay rollouts, so gate tasks are not dropped from
+   later rounds' oracle deltas.
+
+None changes a primary statistic. Fix 3 was applied before the Q3 figures in this report were finalised.
+
+Committed evidence (`docs/comparative-results/`, sha256):
+
+| File | sha256 |
+|---|---|
+| `amend2-analysis.json` | `41b1c4a0…` |
+| `original-trial1-analysis.json` | `f81a8bd2…` |
+| `exploratory-trial-1-guard.json` | `4f2c4167…` |
+| `exploratory-trial-2-guard_noveto.json` | `55b8de08…` |
+
+These contain case IDs, pass/fail values, gate audits and costs only, with no oracle expectations. Raw
+traces and sandboxes stay in the git-ignored `runs/comparative/`.
 
 ## 7. Reproduce
 
